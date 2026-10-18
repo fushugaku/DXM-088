@@ -28,6 +28,8 @@ LXR02::LXR02(const InstanceInfo& info):iplug::Plugin(info,MakeConfig(kParams,1))
     if(bounds[2])GetParam(p)->InitInt(name,(int)value,(int)bounds[0],(int)bounds[1]);
     else GetParam(p)->InitDouble(name,value,bounds[0],bounds[1],.000001);
   }
+  GetParam(283)->SetDisplayText(0,"Patterns");GetParam(283)->SetDisplayText(1,"Drums");
+  GetParam(284)->SetDisplayText(0,"Mix");GetParam(284)->SetDisplayText(1,"Separate");
   mParamCache.fill(std::numeric_limits<float>::quiet_NaN());
 #ifdef WEBVIEW_EDITOR_DELEGATE
   SetMaxJSStringLength(128000000);
@@ -74,6 +76,11 @@ void LXR02::ProcessMidiMsg(const IMidiMsg& msg){
     int i=mMidiCount++;while(i>0&&mMidi[i-1].mOffset>msg.mOffset){mMidi[i]=mMidi[i-1];--i;}mMidi[i]=msg;
   }else mOverflow=true;
 }
+void LXR02::GetBusName(ERoute direction,int bus,int nBuses,WDL_String& name) const {
+  static const char* names[]={"Mix","Drum 1","Drum 2","Drum 3","Snare","Cymbal","Closed Hat","Open Hat"};
+  if(direction==ERoute::kOutput&&bus>=0&&bus<8)name.Set(names[bus]);
+  else iplug::Plugin::GetBusName(direction,bus,nBuses,name);
+}
 void LXR02::ProcessBlock(sample**,sample** out,int nFrames){
   if(!mRetired.load(std::memory_order_acquire)){
     if(auto* ready=mPending.exchange(nullptr,std::memory_order_acq_rel)){
@@ -82,7 +89,7 @@ void LXR02::ProcessBlock(sample**,sample** out,int nFrames){
       for(int p=0;p<kParams;p++)mParamCache[p]=lxrp_get(mActive->engine,p);
     }
   }
-  if(!mActive){for(int c=0;c<NOutChansConnected();c++)std::fill(out[c],out[c]+nFrames,0.);return;}
+  if(!mActive){for(int c=0;c<kChannels;c++)if(IsChannelConnected(ERoute::kOutput,c))std::fill(out[c],out[c]+nFrames,0.);return;}
   auto* engine=mActive->engine;
   uint32_t read=mRead.load(std::memory_order_relaxed);const auto write=mWrite.load(std::memory_order_acquire);
   while(read!=write){const auto& cmd=mCommands[read%kQueue];if(cmd.revision>mActive->revision)lxrp_command(engine,cmd.op,cmd.args.data());++read;}
@@ -100,32 +107,37 @@ void LXR02::ProcessBlock(sample**,sample** out,int nFrames){
     int end=std::min(nFrames,offset+4096);
     if(event<mMidiCount)end=std::min(end,mMidi[event].mOffset);
     if(end<=offset)continue;
-    const int n=end-offset;lastFrames=n;lxrp_process(engine,mAudio.data(),n);
-    for(int i=0;i<n;i++){
-      if(NOutChansConnected()==1)out[0][offset+i]=(mAudio[i*2]+mAudio[i*2+1])*.5;
-      else {if(NOutChansConnected()>0)out[0][offset+i]=mAudio[i*2];if(NOutChansConnected()>1)out[1][offset+i]=mAudio[i*2+1];}
-    }
+    const int n=end-offset;lastFrames=n;lxrp_process_multi(engine,mAudio.data(),n);
+    // Buses may be enabled sparsely, e.g. Mix + only Snare. Channel indices
+    // remain fixed; NOutChansConnected() assumes consecutive connections.
+    for(int c=0;c<kChannels;c++)if(IsChannelConnected(ERoute::kOutput,c))
+      for(int i=0;i<n;i++)out[c][offset+i]=mAudio[i*kChannels+c];
     offset=end;
   }
   int remain=0;for(int i=event;i<mMidiCount;i++){mMidi[i].mOffset-=nFrames;mMidi[remain++]=mMidi[i];}mMidiCount=remain;
   float s[20];lxrp_status(engine,s);for(int i=0;i<20;i++)mStatus[i].store(s[i],std::memory_order_relaxed);
   mPreview.store(lxrp_preview(engine),std::memory_order_relaxed);
-  if(lastFrames>0)for(int i=0;i<128;i++){int at=i*(lastFrames-1)/127;mScope[i].store((mAudio[at*2]+mAudio[at*2+1])*.5f,std::memory_order_relaxed);}
+  if(lastFrames>0)for(int i=0;i<128;i++){
+    int at=i*(lastFrames-1)/127;float wave=0.;
+    const int first=mParamCache[284]>=.5?2:0,last=first?16:2;
+    for(int c=first;c<last;c++)wave+=mAudio[at*kChannels+c]*.5f;
+    mScope[i].store(wave,std::memory_order_relaxed);
+  }
 }
 std::string LXR02::ProjectJSON() const {
   SyncModel();std::string s(lxrp_json(mModel,nullptr,0),'\0');lxrp_json(mModel,(uint8_t*)s.data(),s.size());return s;
 }
 bool LXR02::SerializeState(IByteChunk& chunk) const {
   std::lock_guard<std::mutex> guard(mModelMutex);const auto s=ProjectJSON();
-  const uint32_t magic=0x4c585234;const int size=(int)s.size();chunk.Put(&magic);chunk.Put(&size);chunk.PutBytes(s.data(),size);return SerializeParams(chunk);
+  const uint32_t magic=0x4c585235;const int size=(int)s.size();chunk.Put(&magic);chunk.Put(&size);chunk.PutBytes(s.data(),size);return SerializeParams(chunk);
 }
 int LXR02::UnserializeState(const IByteChunk& chunk,int pos){
-  uint32_t magic=0;int size=0;pos=chunk.Get(&magic,pos);if(pos<0||(magic!=0x4c585233&&magic!=0x4c585234))return -1;
+  uint32_t magic=0;int size=0;pos=chunk.Get(&magic,pos);if(pos<0||(magic!=0x4c585233&&magic!=0x4c585234&&magic!=0x4c585235))return -1;
   pos=chunk.Get(&size,pos);if(pos<0||size<=0||size>64000000||size>chunk.Size()-pos)return -1;
   std::string s(size,'\0');pos=chunk.GetBytes(s.data(),size,pos);if(pos<0)return -1;
   std::lock_guard<std::mutex> guard(mModelMutex);
   if(!lxrp_load(mModel,(const uint8_t*)s.data(),s.size()))return -1;
-  const int count=magic==0x4c585233?274:kParams;
+  const int count=magic==0x4c585233?274:magic==0x4c585234?283:kParams;
   for(int p=0;p<count;p++){double v;pos=chunk.Get(&v,pos);if(pos<0||!std::isfinite(v))return -1;GetParam(p)->Set(v);}
   for(int p=count;p<kParams;p++)GetParam(p)->Set(lxrp_get(mModel,p));
   SyncModel();PublishModel();mProjectDirty=true;return pos;
@@ -232,13 +244,13 @@ bool LXR02::stateLoad(const clap_istream* stream) noexcept {
   return true;
 }
 bool LXR02::audioPortsGetConfig(uint32_t index,clap_audio_ports_config* config) const noexcept {
-  if(index!=0)return false;*config={};config->id=0;std::strncpy(config->name,"Stereo",CLAP_NAME_SIZE);
-  config->input_port_count=0;config->output_port_count=1;config->has_main_input=false;config->has_main_output=true;
+  if(index>7)return false;*config={};config->id=index;std::strncpy(config->name,index==0?"Mix + 7 stereo drums":index==1?"Stereo":"Stereo + drum outputs",CLAP_NAME_SIZE);
+  config->input_port_count=0;config->output_port_count=index==0?8:index;config->has_main_input=false;config->has_main_output=true;
   config->main_output_channel_count=2;config->main_output_port_type=CLAP_PORT_STEREO;return true;
 }
 bool LXR02::notePortsInfo(uint32_t index,bool input,clap_note_port_info* info) const noexcept {
   if(index!=0||!input)return false;*info={};info->id=0;info->supported_dialects=CLAP_NOTE_DIALECT_MIDI;info->preferred_dialect=CLAP_NOTE_DIALECT_MIDI;
-  std::strncpy(info->name,"Pattern notes",CLAP_NAME_SIZE);return true;
+  std::strncpy(info->name,"Pattern / drum notes",CLAP_NAME_SIZE);return true;
 }
 void LXR02::reset() noexcept {
   if(mActive){std::array<double,8> args{};lxrp_command(mActive->engine,13,args.data());}mMidiCount=0;

@@ -72,7 +72,7 @@ export function createPerformanceUI(h){
    if(kind==='stems'){
     files=[];for(let t=0;t<7;t++){const result=await renderPattern(h.module(),commands,s,{beats,track:t,onProgress:x=>progressText((t+x)/7)});files.push({name:`${base}-${t+1}-${tracks[t].toLowerCase().replace(/[^a-z0-9]+/g,'-')}.wav`,mime:'audio/wav',bytes:wavBytes(result.pcm,result.sr)});}
    }else if(kind==='midi'&&exportMode===1){files=[{name:`${base}-gate.mid`,mime:'audio/midi',bytes:midiBytes([],s.bpm,beats,{gateNote:patternNote(s.pattern,s.plugin?.baseNote??0)})}];}
-   else {const result=await renderPattern(h.module(),commands,s,{beats,audio:kind==='wav',onProgress:progressText});files=[{name:`${base}.${kind==='wav'?'wav':'mid'}`,mime:kind==='wav'?'audio/wav':'audio/midi',bytes:kind==='wav'?wavBytes(result.pcm,result.sr):midiBytes(result.hits,s.bpm,beats,{names:tracks})}];}
+   else {const result=await renderPattern(h.module(),commands,s,{beats,audio:kind==='wav',onProgress:progressText});files=[{name:`${base}.${kind==='wav'?'wav':'mid'}`,mime:kind==='wav'?'audio/wav':'audio/midi',bytes:kind==='wav'?wavBytes(result.pcm,result.sr):midiBytes(result.hits,s.bpm,beats,{names:tracks,drumNotes:s.plugin?.drumNotes})}];}
    ready={files,kind,label:`${patternLabel(s.pattern)} · ${renderedBars} ${renderedBars===1?'bar':'bars'}`,token:null};
    if(h.native&&!h.native.preview&&h.native.supportsFileDrag)h.native.prepareFiles(files.map(f=>({name:f.name,data:base64FromBytes(f.bytes)})));
   }catch(e){h.report(e);}finally{busy=false;render();}

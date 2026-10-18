@@ -22,7 +22,7 @@ export function wavBytes(pcm,sr){
 const varlen=n=>{n=Math.max(0,Math.round(n));const a=[n&127];while(n>>=7)a.unshift((n&127)|128);return a;};
 const text=s=>[...new TextEncoder().encode(s)];
 function chunk(name,data){const out=new Uint8Array(8+data.length),v=new DataView(out.buffer);out.set(text(name),0);v.setUint32(4,data.length);out.set(data,8);return out;}
-export function midiBytes(hits,bpm,beats,{gateNote=null,names=[]}={}){
+export function midiBytes(hits,bpm,beats,{gateNote=null,names=[],drumNotes=null}={}){
  const ticks=960,end=Math.round(beats*ticks),tempo=Math.round(60000000/bpm),tracks=[];
  const eventTrack=(events,name)=>{
   const n=text(name),data=[0,255,3,...varlen(n.length),...n];let last=0;
@@ -33,7 +33,7 @@ export function midiBytes(hits,bpm,beats,{gateNote=null,names=[]}={}){
  if(gateNote!==null){eventTrack([{tick:0,order:1,data:[144,gateNote,127]},{tick:end,order:0,data:[128,gateNote,0]}],'DXM-088 pattern gate');}
  else for(let t=0;t<7;t++){
   const events=[],notes=[36,41,43,38,39,42,46];
-  const row=hits.filter(h=>h.track===t&&h.frame/44100*bpm/60<beats).map(h=>({...h,tick:Math.max(0,Math.round(h.frame/44100*bpm/60*ticks)),key:Math.max(0,Math.min(127,notes[t]+h.note))}));
+  const row=hits.filter(h=>h.track===t&&h.frame/44100*bpm/60<beats).map(h=>({...h,tick:Math.max(0,Math.round(h.frame/44100*bpm/60*ticks)),key:Math.max(0,Math.min(127,drumNotes?drumNotes[t]:notes[t]+h.note))}));
   row.forEach((h,i)=>{const next=row.slice(i+1).find(x=>x.key===h.key)?.tick??end;events.push({tick:h.tick,order:1,data:[153,h.key,Math.max(1,Math.round(h.velocity*127))]},{tick:Math.max(h.tick+1,Math.min(end,next,h.tick+60)),order:0,data:[137,h.key,0]});});eventTrack(events,names[t]||`Track ${t+1}`);
  }
  const header=chunk('MThd',[0,1,(tracks.length>>8)&255,tracks.length&255,(ticks>>8)&255,ticks&255]),out=new Uint8Array(header.length+tracks.reduce((n,t)=>n+t.length,0));out.set(header);let at=header.length;for(const t of tracks){out.set(t,at);at+=t.length;}return out;

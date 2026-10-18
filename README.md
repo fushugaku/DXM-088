@@ -22,9 +22,11 @@ a shared browser / plug-in editor.
 - MIDI velocity, aftertouch and mod wheel; optional WAV layers on every track.
 - Euclidean generation, protected sound mutation, undo and project autosave.
 - WAV, MIDI and seven-stem ZIP export. macOS also supports native export drag into a DAW.
-- 283 host automation parameters and a local WebView editor with no server dependency.
+- Pattern-gate or direct drum MIDI modes, with seven configurable drum notes.
+- Main stereo mix or seven individual stereo drum outputs in VST3, AU and CLAP.
+- 292 host automation parameters and a local WebView editor with no server dependency.
 
-Every MIDI note **0–127 (C−2–G8)** selects its own pattern and plays while held.
+In **MIDI → Patterns**, every MIDI note **0–127 (C−2–G8)** selects its own pattern and plays while held.
 New projects map **0 → A01**, **7 → A08**, **8 → B01**, **127 → P08**.
 The last held note wins; releasing it returns to the previous held note.
 Releasing all notes stops the sequencer. Pattern changes can be immediate,
@@ -36,6 +38,18 @@ The **A01** field rotates the mapping while keeping all 128 notes available.
 note takes over; releasing the last note stops the sequencer. Keyboard shortcuts
 A S D F G H J audition individual voices when the editor has focus. VST3 accepts
 all 16 MIDI channels.
+
+**MIDI → Drums** plays one percussion hit per note, including velocity and hi-hat
+choke. Note-off leaves the drum's natural tail. The editable defaults are
+**36 / 45 / 47 / 38 / 49 / 42 / 46** for Drum 1, Drum 2, Drum 3, Snare, Cymbal,
+Closed Hat and Open Hat. MIDI mode, routing and note assignments are saved per instance.
+
+**Output → Separate** sends those seven tracks to named stereo buses, after voice
+processing, levels, pan and master gain, before shared master FX. Mix is silent in
+this mode. **Output → Mix** retains the original stereo mix and shared FX, with
+silent auxiliary buses. In Ableton, create audio tracks, select the DXM-088 track
+in **Audio From**, choose a drum output in the lower chooser and set **Monitor: In**.
+See [Ableton's multi-out guide](https://help.ableton.com/hc/en-us/articles/209773065-Using-multi-out-plug-ins).
 
 DXM-088 is the new name of the earlier local LXR02 Rust instrument. Existing
 format IDs, parameter IDs and project data remain compatible. Avoid installing

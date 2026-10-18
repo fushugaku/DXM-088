@@ -64,3 +64,12 @@ Release of the last held note stops playback; saved projects never start preview
 automatically. Keep focused Length/Hits fields stable during grid updates and
 commit their displayed bounds on blur or Enter. Native WebView must pass keyboard
 events through WebKit/Cocoa instead of claiming unhandled keys.
+
+Native routing (0.7): a compact strip between transport and voices uses two
+segmented controls: MIDI Patterns / Drums and Output Mix / Separate. Amber marks
+the selected segment; both controls have equal height. Patterns shows the A01
+origin; Drums shows seven editable note assignments with note names and ± controls.
+Keep note fields stable during host updates. On phones the switches stack and
+note assignments form three columns with 44px controls. A single conditional
+line explains that Separate bypasses master FX and silences Mix, avoiding doubled
+audio when the seven named stereo buses feed DAW tracks.

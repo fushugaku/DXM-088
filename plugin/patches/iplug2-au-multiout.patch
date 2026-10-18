@@ -1,0 +1,135 @@
+diff --git a/IPlug/AUv2/IPlugAU.cpp b/IPlug/AUv2/IPlugAU.cpp
+index 812876b..ae47637 100644
+--- a/IPlug/AUv2/IPlugAU.cpp
++++ b/IPlug/AUv2/IPlugAU.cpp
+@@ -1597,7 +1597,7 @@ OSStatus IPlugAU::RenderProc(void* pPlug, AudioUnitRenderActionFlags* pFlags, co
+   
+   _this->mLastRenderTimeStamp = *pTimestamp;
+ 
+-  if (!(pTimestamp->mFlags & kAudioTimeStampSampleTimeValid) /*|| outputBusIdx >= _this->mOutBuses.GetSize()*/ || nFrames > _this->GetBlockSize())
++  if (!(pTimestamp->mFlags & kAudioTimeStampSampleTimeValid) || (!_this->IsMidiEffect() && outputBusIdx >= _this->mOutBuses.GetSize()) || nFrames > _this->GetBlockSize())
+   {
+     return kAudioUnitErr_InvalidPropertyValue;
+   }
+@@ -1615,6 +1615,8 @@ OSStatus IPlugAU::RenderProc(void* pPlug, AudioUnitRenderActionFlags* pFlags, co
+   }
+ 
+   int lastConnectedOutputBus = -1;
++  const bool multiOutput = !_this->IsMidiEffect() && _this->mOutBuses.GetSize() > 1;
++  const bool freshRender = pTimestamp->mSampleTime != _this->mLastRenderSampleTime;
+ 
+   if(!_this->IsMidiEffect())
+   {
+@@ -1692,45 +1694,66 @@ OSStatus IPlugAU::RenderProc(void* pPlug, AudioUnitRenderActionFlags* pFlags, co
+   
+     BusChannels* pOutBus = _this->mOutBuses.Get(outputBusIdx);
+ 
+-    // if this bus is not connected OR the number of buffers that the host has given are not equal to the number the bus expects
+-    if (!(pOutBus->mConnected) || pOutBus->mNHostChannels != pOutBufList->mNumberBuffers)
++    if (multiOutput)
+     {
+-      const int startChannelIdx = pOutBus->mPlugChannelStartIdx;
+-      const int nConnected = std::max(pOutBus->mNHostChannels, static_cast<int>(pOutBufList->mNumberBuffers));
+-      const int nUnconnected = std::max(pOutBus->mNPlugChannels - nConnected, 0);
+-      
+-      assert(nConnected > -1);
+-      _this->SetChannelConnections(ERoute::kOutput, startChannelIdx, nConnected, true);
+-      _this->SetChannelConnections(ERoute::kOutput, startChannelIdx + nConnected, nUnconnected, false); // This will disconnect the right hand channel on a single stereo bus
+-      pOutBus->mConnected = true;
++      // AU hosts may pull a single auxiliary bus, or pull buses in any order.
++      // Render once per timestamp into owned buffers, then serve each bus.
++      if (!pOutBufList->mNumberBuffers || pOutBufList->mNumberBuffers > pOutBus->mNPlugChannels)
++        return kAudioUnitErr_InvalidPropertyValue;
++      if (freshRender)
++      {
++        const int channels = _this->MaxNChannels(ERoute::kOutput);
++        _this->SetChannelConnections(ERoute::kOutput, 0, channels, true);
++        for (int ch = 0; ch < channels; ++ch)
++        {
++          AudioSampleType* buffer = _this->mOutScratchBuf.Get() + ch * nFrames;
++          _this->AttachBuffers(ERoute::kOutput, ch, 1, &buffer, nFrames);
++        }
++      }
+     }
+-
+-    for (int c = 0, chIdx = pOutBus->mPlugChannelStartIdx; c < pOutBufList->mNumberBuffers; ++c, ++chIdx)
++    else
+     {
+-      if (!(pOutBufList->mBuffers[c].mData)) // Downstream unit didn't give us buffers.
+-        pOutBufList->mBuffers[c].mData = _this->mOutScratchBuf.Get() + chIdx * nFrames;
+ 
+-      _this->AttachBuffers(ERoute::kOutput, chIdx, 1, (AudioSampleType**) &(pOutBufList->mBuffers[c].mData), nFrames);
+-    }
++      // if this bus is not connected OR the number of buffers that the host has given are not equal to the number the bus expects
++      if (!(pOutBus->mConnected) || pOutBus->mNHostChannels != pOutBufList->mNumberBuffers)
++      {
++        const int startChannelIdx = pOutBus->mPlugChannelStartIdx;
++        const int nConnected = std::max(pOutBus->mNHostChannels, static_cast<int>(pOutBufList->mNumberBuffers));
++        const int nUnconnected = std::max(pOutBus->mNPlugChannels - nConnected, 0);
++      
++        assert(nConnected > -1);
++        _this->SetChannelConnections(ERoute::kOutput, startChannelIdx, nConnected, true);
++        _this->SetChannelConnections(ERoute::kOutput, startChannelIdx + nConnected, nUnconnected, false); // This will disconnect the right hand channel on a single stereo bus
++        pOutBus->mConnected = true;
++      }
+ 
+-    for(int i = 0; i < _this->mOutBuses.GetSize(); i++)
+-    {
+-      if(!_this->mOutBuses.Get(i)->mConnected)
++      for (int c = 0, chIdx = pOutBus->mPlugChannelStartIdx; c < pOutBufList->mNumberBuffers; ++c, ++chIdx)
+       {
+-        break;
++        if (!(pOutBufList->mBuffers[c].mData)) // Downstream unit didn't give us buffers.
++          pOutBufList->mBuffers[c].mData = _this->mOutScratchBuf.Get() + chIdx * nFrames;
++
++        _this->AttachBuffers(ERoute::kOutput, chIdx, 1, (AudioSampleType**) &(pOutBufList->mBuffers[c].mData), nFrames);
+       }
+-      else
++
++      for(int i = 0; i < _this->mOutBuses.GetSize(); i++)
+       {
+-        lastConnectedOutputBus++;
++        if(!_this->mOutBuses.Get(i)->mConnected)
++        {
++          break;
++        }
++        else
++        {
++          lastConnectedOutputBus++;
++        }
+       }
+     }
+   }
+ 
+-  if (_this->IsMidiEffect() || outputBusIdx == lastConnectedOutputBus)
++  if (_this->IsMidiEffect() || (multiOutput ? freshRender : outputBusIdx == lastConnectedOutputBus))
+   {
+     int busIdx1based = outputBusIdx+1;
+ 
+-    if (busIdx1based < _this->mOutBuses.GetSize() /*&& (_this->GetHost() != kHostAbletonLive)*/)
++    if (!multiOutput && busIdx1based < _this->mOutBuses.GetSize())
+     {
+       int totalNumChans = _this->mOutBuses.GetSize() * 2; // stereo only for the time being
+       int nConnected = busIdx1based * 2;
+@@ -1760,6 +1783,21 @@ OSStatus IPlugAU::RenderProc(void* pPlug, AudioUnitRenderActionFlags* pFlags, co
+     }
+   }
+ 
++  if (multiOutput)
++  {
++    const int start = _this->mOutBuses.Get(outputBusIdx)->mPlugChannelStartIdx;
++    for (UInt32 c = 0; c < pOutBufList->mNumberBuffers; ++c)
++    {
++      AudioBuffer& output = pOutBufList->mBuffers[c];
++      AudioSampleType* source = _this->mOutScratchBuf.Get() + (start + c) * nFrames;
++      if (output.mData)
++        memcpy(output.mData, source, nFrames * sizeof(AudioSampleType));
++      else
++        output.mData = source;
++      output.mDataByteSize = nFrames * sizeof(AudioSampleType);
++    }
++  }
++
+   if (nRenderNotify)
+   {
+     for (int i = 0; i < nRenderNotify; ++i)

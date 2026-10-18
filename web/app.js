@@ -1,7 +1,7 @@
 import {readStoredProject,storeProject} from './project-storage.js';
 import {upgradeFeatures,validateFeatures,featureCommands,uploadSamples,effective,updateScene,divisions,conditionNames,defaultPerformance} from './feature-state.js';
 import {createPerformanceUI} from './performance-ui.js';
-import {migrateProject,FX_DEFAULTS} from './project-format.js';
+import {migrateProject,FX_DEFAULTS,defaultPlugin} from './project-format.js';
 import {kits,tracks,shortTracks,keys,defs,pages,clamp,bindDefinitions,normalize,denormalize,constrain,format} from './parameters.js';
 import {KnobDrag,wheelPixels,ParameterEdits} from './knob-input.js';
 import {PATTERN_COUNT,BANK_SIZE,BANK_COUNT,patternLabel,patternNote,noteName} from './pattern-bank.js';
@@ -41,7 +41,7 @@ function command(fn,...args){
  else if(fn==='lxr_mute')state.muted[args[0]]=!!args[1];
  else if(fn==='lxr_solo')state.solo[args[0]]=!!args[1];
  core[fn](...args);if(audio)audio.node.port.postMessage({command:[fn,args]});if(native&&!receivingNative){markLocalCommand(fn,args);native.commands([[fn,args]]);}}
-function batch(commands){for(const [fn,args] of commands)core[fn](...args);if(audio)audio.node.port.postMessage({batch:commands});if(native&&!receivingNative){if(commands.length>64)native.project({...state,plugin:{...state.plugin,version:2,baseNote:Number($('#pattern-note-base')?.value??state.plugin?.baseNote??0)}});else native.commands(commands);}}
+function batch(commands){for(const [fn,args] of commands)core[fn](...args);if(audio)audio.node.port.postMessage({batch:commands});if(native&&!receivingNative){if(commands.length>64)native.project({...state,plugin:{...defaultPlugin(),...state.plugin}});else native.commands(commands);}}
 
 function readParams(){return Array.from({length:6},(_,v)=>Array.from({length:defs.length},(_,p)=>core.lxr_get_param(v,p)));}
 function readPattern(p){return {lengths:Array.from({length:7},(_,t)=>core.lxr_get_length(p,t)),divisions:Array.from({length:7},(_,t)=>core.lxr_track_get(p,t,0)),delays:Array.from({length:7},(_,t)=>core.lxr_track_get(p,t,1)),grooves:Array.from({length:7},(_,t)=>core.lxr_track_get(p,t,2)),grooveAmounts:Array.from({length:7},(_,t)=>core.lxr_track_get(p,t,3)),tracks:Array.from({length:7},(_,t)=>Array.from({length:64},(_,k)=>({v:core.lxr_get_step(p,t,k,0),prob:core.lxr_get_step(p,t,k,1),note:core.lxr_get_step(p,t,k,2),ratchet:core.lxr_get_step(p,t,k,3),micro:core.lxr_get_step(p,t,k,8),condition:core.lxr_get_step(p,t,k,9),every:core.lxr_get_step(p,t,k,10),phase:core.lxr_get_step(p,t,k,11),locks:[[core.lxr_get_step(p,t,k,4),core.lxr_get_step(p,t,k,5)],[core.lxr_get_step(p,t,k,6),core.lxr_get_step(p,t,k,7)]]})))};}
@@ -84,7 +84,10 @@ function validateProject(input){
  for(const field of ['levels','muted','solo']){if(!Array.isArray(raw[field])||raw[field].length!==7)fail();s[field]=raw[field].map(x=>field==='levels'?number(x,0,1.25):Boolean(x));}
  if(!Array.isArray(raw.fx)||raw.fx.length!==15)fail();
  const ranges=[[0,7],[0,1],[0,0.743],[0,0.94],[0,1],[0,1],[0,1.5],[0,1],[0,1],[0,5],[0,1],[0,1],[0,1],[1,8],[0,1]];
- s.fx=raw.fx.map((x,i)=>number(x,...ranges[i]));if(raw.plugin)s.plugin={version:2,baseNote:number(raw.plugin.baseNote,0,120)|0};return validateFeatures(raw,s,number,defs);
+ s.fx=raw.fx.map((x,i)=>number(x,...ranges[i]));
+ s.plugin={...defaultPlugin(),baseNote:number(raw.plugin?.baseNote??0,0,120)|0,midiMode:number(raw.plugin?.midiMode??0,0,1)|0,outputMode:number(raw.plugin?.outputMode??0,0,1)|0};
+ if(raw.plugin?.drumNotes){if(!Array.isArray(raw.plugin.drumNotes)||raw.plugin.drumNotes.length!==7)fail();s.plugin.drumNotes=raw.plugin.drumNotes.map(v=>number(v,0,127)|0);}
+ return validateFeatures(raw,s,number,defs);
 }
 
 let activeDropdown=null,dropdownSerial=0;
@@ -290,7 +293,21 @@ function renderFx(){
 }
 function renderAll(){
  $('#bpm').value=Math.round(state.bpm);$('#swing').value=state.swing;$('#swing-value').textContent=`${Math.round(state.swing*100)}%`;$('#master').value=effective(state,'fx')[6];$('#master-value').textContent=format(defs[19],effective(state,'fx')[6]);$('#morph').value=effective(state,'morph');$('#morph-value').textContent=`${Math.round(effective(state,'morph')*100)}%`;$('#morph-target').textContent=`→ ${kits[effective(state,'morphTarget')]}`;$('#session-name').value=state.name;
- kitSelect?.set(state.kit);fxSelect?.set(effective(state,'fx')[0]);renderChannels();renderPatterns();renderGrid();renderFx();selectTrack(selectedTrack);
+ kitSelect?.set(state.kit);fxSelect?.set(effective(state,'fx')[0]);renderChannels();renderPatterns();renderGrid();renderFx();selectTrack(selectedTrack);renderMidiRouting();
+}
+
+function renderMidiRouting(){
+ if(!native)return;
+ const settings=state.plugin={...defaultPlugin(),...state.plugin},drums=settings.midiMode===1;
+ $$('[data-midi-mode]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.midiMode===settings.midiMode)));
+ $$('[data-output-mode]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.outputMode===settings.outputMode)));
+ $('#pattern-origin').hidden=drums;$('#drum-note-map').hidden=!drums;$('#separate-output-help').hidden=settings.outputMode!==1;
+ $('#pattern-note-range').textContent='C−2–G8';$('#pattern-origin').title=`All 128 MIDI notes · A01 = ${noteName(settings.baseNote)} (${settings.baseNote}) · last held note`;
+ if(document.activeElement!==$('#pattern-note-base'))$('#pattern-note-base').value=settings.baseNote;
+ $$('[data-drum-note]').forEach(input=>{const t=+input.dataset.drumNote;if(document.activeElement!==input)input.value=settings.drumNotes[t];$(`#drum-note-name-${t}`).textContent=noteName(settings.drumNotes[t]);});
+ $('#routing-summary').textContent=drums?'One note · one hit':'Hold a note · play a pattern';
+ $('.keyboard-hints').textContent=drums?'MIDI → DRUMS · A S D F G H J → DRUMS':'MIDI → PATTERN · A S D F G H J → DRUMS';
+ $('#play').disabled=!drums&&nativeMidiHeld;
 }
 
 // Host automation updates existing controls, preserving pointer capture and focus.
@@ -403,11 +420,18 @@ boot();
 async function bindNative(){
  addEventListener('lxr-native-saved',()=>toast('Project saved'));
  document.body.classList.add("native-plugin");
- const applyProject=project=>{if(!project)return;native.supportsFileDrag=!!project.plugin?.nativeFileDrag;receivingNative=true;try{state=validateProject(project);batch(snapshotCommands(state));renderAll();const base=state.plugin?.baseNote??0;syncSamples();$('#pattern-note-base').value=base;updateNoteRange(base);}finally{receivingNative=false;}};
- const label=document.createElement('label');label.className='native-note-control';label.innerHTML='<span>A01</span><input id="pattern-note-base" aria-label="A01 MIDI note" type="number" min="0" max="120" value="0"><output id="pattern-note-range">C−2–G8</output>';
- $('#tap').replaceWith(label);
- const updateNoteRange=base=>{$('#pattern-note-range').textContent='C−2–G8';label.title=`All 128 MIDI notes · A01 = ${noteName(base)} (${base}) · last held note`;};
- $('#pattern-note-base').onchange=e=>{const value=Math.round(clamp(+e.target.value||0,0,120));e.target.value=value;updateNoteRange(value);state.plugin={version:2,baseNote:value};native.parameter(273,value);};
+ const applyProject=project=>{if(!project)return;native.supportsFileDrag=!!project.plugin?.nativeFileDrag;receivingNative=true;try{state=validateProject(project);batch(snapshotCommands(state));renderAll();syncSamples();}finally{receivingNative=false;}};
+ $('#tap').hidden=true;$('#native-routing').hidden=false;
+ const changeSetting=(id,value)=>{remember();state.plugin={...defaultPlugin(),...state.plugin};if(id===273)state.plugin.baseNote=value;else if(id===283){state.plugin.midiMode=value;nativeMidiHeld=false;setPlaying(false);}else if(id===284)state.plugin.outputMode=value;else state.plugin.drumNotes[id-285]=value;localEdits.write(id,value,performance.now());native.parameter(id,value);renderMidiRouting();saveSoon();};
+ $('#pattern-note-base').onchange=e=>changeSetting(273,Math.round(clamp(+e.target.value||0,0,120)));
+ $$('[data-midi-mode]').forEach(b=>b.onclick=()=>{const mode=+b.dataset.midiMode;if(mode!==(state.plugin?.midiMode??0))changeSetting(283,mode);});
+ $$('[data-output-mode]').forEach(b=>b.onclick=()=>{const mode=+b.dataset.outputMode;if(mode!==(state.plugin?.outputMode??0))changeSetting(284,mode);});
+ $('#drum-note-map').replaceChildren(...tracks.map((name,t)=>{
+  const field=el('label','drum-note-field'),heading=el('span','drum-note-heading'),note=el('output');note.id=`drum-note-name-${t}`;heading.append(el('span','',shortTracks[t]),note);
+  const counter=el('span','number-control'),input=el('input');input.type='number';input.min=0;input.max=127;input.dataset.drumNote=t;input.setAttribute('aria-label',`${name} MIDI note`);input.onchange=()=>changeSetting(285+t,Math.round(clamp(+input.value||0,0,127)));input.onblur=()=>renderMidiRouting();input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();input.blur();}};
+  for(const delta of [-1,1]){const b=el('button','',delta<0?'−':'+');b.type='button';b.setAttribute('aria-label',`${delta<0?'Decrease':'Increase'} ${name} MIDI note`);b.onclick=e=>{e.preventDefault();input.value=clamp(+input.value+delta,0,127);input.onchange();};counter.append(b);if(delta<0)counter.append(input);}
+  field.append(heading,counter);return field;
+ }));
  $('#bpm').readOnly=true;$('#bpm').title='DAW tempo';$('#play').disabled=false;$('#play').title='Preview the selected pattern · MIDI notes take priority';$('#play').setAttribute('aria-label','Preview pattern');$('#export').hidden=false;
  $('#audio-status').classList.add('enabled');$('#audio-status span').textContent=native.preview?'Preview':'DAW audio';$('#audio-status').title='Audio is processed by the native Rust instrument';
  $('.keyboard-hints').textContent='MIDI → PATTERN · A S D F G H J → DRUMS';$('#session-dialog .secondary').textContent='The DAW project stores all kits, patterns and locks. Project files also open in the web instrument.';
@@ -424,16 +448,16 @@ async function bindNative(){
   else if(id===278){state.performance.velocityDepth=norm;}
   else if(id===280){state.performance.switchQuant=Math.round(physical?norm:norm*2);}
   else if(id===281||id===282){state.performance.lfoPeriods[id-281]=physical?norm:.0625+norm*(32-.0625);}
-  else if(id===273){value=Math.round(physical?norm:norm*120);state.plugin={version:2,baseNote:value};$('#pattern-note-base').value=value;updateNoteRange(value);}
+  else if(id===273||id>=283&&id<292){value=Math.round(physical?norm:norm*(id===273?120:id<285?1:127));if(!localEdits.accept(id,value,performance.now()))return;state.plugin={...defaultPlugin(),...state.plugin};if(id===273)state.plugin.baseNote=value;else if(id===283)state.plugin.midiMode=value;else if(id===284)state.plugin.outputMode=value;else state.plugin.drumNotes[id-285]=value;renderMidiRouting();}
   if(id===234)fxChanged=true;
   if(!refreshPending){refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refreshNativeControls(fxChanged);fxChanged=false;});}
  });
  addEventListener('lxr-native-transport',({detail:s})=>{
-  if(!nativeBooted)return;state.bpm=s.bpm||state.bpm;$('#bpm').value=Number(state.bpm.toFixed(2));positions=s.positions.map(Math.round);audioPattern=Math.round(s.pattern);nativeMidiHeld=s.note>=0;$('#play').disabled=nativeMidiHeld;setPlaying(nativeMidiHeld||!!s.preview);
-  if(s.note>=0&&state.pattern!==audioPattern){state.pattern=audioPattern;renderAll();}
+  if(!nativeBooted)return;const drums=state.plugin?.midiMode===1;state.bpm=s.bpm||state.bpm;$('#bpm').value=Number(state.bpm.toFixed(2));positions=s.positions.map(Math.round);audioPattern=Math.round(s.pattern);nativeMidiHeld=!drums&&s.note>=0;$('#play').disabled=nativeMidiHeld;setPlaying(nativeMidiHeld||!!s.preview);
+  if(!drums&&s.note>=0&&state.pattern!==audioPattern){state.pattern=audioPattern;renderAll();}
   if(s.meters)$$('.vu i').forEach((n,t)=>n.style.height=`${Math.min(100,Math.sqrt(s.meters[t])*100)}%`);if(s.wave)for(let i=0;i<waveform.length;i++)waveform[i]=s.wave[Math.floor(i*s.wave.length/waveform.length)];
   $('#meter-l').style.width=`${Math.min(100,s.left*100)}%`;$('#meter-r').style.width=`${Math.min(100,s.right*100)}%`;
-  $('#engine-info').textContent=s.note>=0?`MIDI ${noteName(Math.round(s.note))} · ${patternLabel(audioPattern)} · ${s.running?'DAW sync':'live'}`:s.preview?`Preview · ${patternLabel(audioPattern)} · ${s.running?'DAW sync':'live'}`:'Hold a MIDI note · or preview a pattern';
+  $('#engine-info').textContent=drums?(s.preview?`Preview · ${patternLabel(audioPattern)}`:s.note>=0?`Drum MIDI ${noteName(Math.round(s.note))}`:'Drum MIDI · one note, one hit'):s.note>=0?`MIDI ${noteName(Math.round(s.note))} · ${patternLabel(audioPattern)} · ${s.running?'DAW sync':'live'}`:s.preview?`Preview · ${patternLabel(audioPattern)} · ${s.running?'DAW sync':'live'}`:'Hold a MIDI note · or preview a pattern';
  });
- updateNoteRange(0);const project=await native.ready();applyProject(project);nativeBooted=true;
+ const project=await native.ready();applyProject(project);renderMidiRouting();nativeBooted=true;
 }

@@ -1,12 +1,13 @@
 //! The configured I2S clock is 44,140.625 Hz. Resampling follows master FX.
 //! A causal 32-tap Blackman-windowed sinc keeps host AudioContext rates out of DSP.
 use crate::firmware::CLOCK;
+use crate::OUTPUT_CHANNELS;
 const TAPS: usize = 32;
 const PHASES: usize = 256;
 pub struct Resampler {
     pub phase: f64,
     pub step: f64,
-    history: [[f32; 2]; TAPS],
+    history: [[f32; OUTPUT_CHANNELS]; TAPS],
     head: usize,
     coefficients: Box<[[f32; TAPS]; PHASES + 1]>,
     bypass: bool,
@@ -37,7 +38,7 @@ impl Resampler {
         Self {
             phase: 0.,
             step: CLOCK / rate as f64,
-            history: [[0.; 2]; TAPS],
+            history: [[0.; OUTPUT_CHANNELS]; TAPS],
             head: 0,
             coefficients,
             bypass: rate as f64 == CLOCK,
@@ -48,23 +49,23 @@ impl Resampler {
     }
     pub fn clear(&mut self) {
         self.phase = 0.;
-        self.history.fill([0.; 2]);
+        self.history.fill([0.; OUTPUT_CHANNELS]);
         self.head = 0;
     }
-    pub fn push(&mut self, sample: [f32; 2]) {
+    pub fn push(&mut self, sample: [f32; OUTPUT_CHANNELS]) {
         self.head = (self.head + 1) % TAPS;
         self.history[self.head] = sample;
     }
-    pub fn output(&self) -> [f32; 2] {
+    pub fn output(&self, channels: usize) -> [f32; OUTPUT_CHANNELS] {
         let phase = self.phase * PHASES as f64;
         let index = (phase as usize).min(PHASES - 1);
         let fraction = (phase - index as f64) as f32;
-        let mut out = [0.; 2];
+        let mut out = [0.; OUTPUT_CHANNELS];
         for i in 0..TAPS {
             let weight = (self.coefficients[index + 1][i] - self.coefficients[index][i])
                 .mul_add(fraction, self.coefficients[index][i]);
             let value = self.history[(self.head + TAPS - i) % TAPS];
-            for c in 0..2 {
+            for c in 0..channels {
                 out[c] += value[c] * weight;
             }
         }

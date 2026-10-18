@@ -14,6 +14,8 @@ use sequencer::*;
 use std::cell::RefCell;
 
 pub const MAX_FRAMES: usize = 4096;
+/// Main stereo pair followed by seven stereo drum outputs.
+pub const OUTPUT_CHANNELS: usize = 16;
 #[no_mangle]
 pub extern "C" fn lxr_pattern_count() -> u32 {
     PATTERNS as u32
@@ -72,6 +74,8 @@ pub struct Engine {
     rng: Rng,
     resampler: resampler::Resampler,
     output: Vec<f32>,
+    pub capture_stems: bool,
+    stem_output: Vec<f32>,
 }
 impl Engine {
     pub fn new(sample_rate: f32) -> Self {
@@ -138,6 +142,8 @@ impl Engine {
             rng: Rng(0x72513291),
             resampler: resampler::Resampler::new(sr),
             output: vec![0.; MAX_FRAMES * 2],
+            capture_stems: false,
+            stem_output: vec![0.; MAX_FRAMES * (OUTPUT_CHANNELS - 2)],
         };
         e.global_fx = e.fx_values();
         e.refresh();
@@ -465,20 +471,32 @@ impl Engine {
                     let sample = self.dsp_frame(has_solo);
                     self.resampler.push(sample);
                 }
-                self.resampler.output()
+                self.resampler.output(if self.capture_stems {
+                    OUTPUT_CHANNELS
+                } else {
+                    2
+                })
             };
             if self.playing && internal_clock {
                 self.beat += self.bpm as f64 / (60. * self.sample_rate as f64);
             }
             self.frame_count = self.frame_count.wrapping_add(1);
-            for (c, x) in out.into_iter().enumerate() {
+            for (c, &x) in out[..2].iter().enumerate() {
                 self.output[frame * 2 + c] = x;
                 self.peak[c] = self.peak[c].max(x.abs()) * 0.9995;
+            }
+            if self.capture_stems {
+                let at = frame * (OUTPUT_CHANNELS - 2);
+                self.stem_output[at..at + OUTPUT_CHANNELS - 2].copy_from_slice(&out[2..]);
             }
         }
         &self.output[..n * 2]
     }
-    fn dsp_frame(&mut self, has_solo: bool) -> [f32; 2] {
+    /// Post voice processing, level, pan and master gain; before shared master FX.
+    pub fn stems(&self, frames: usize) -> &[f32] {
+        &self.stem_output[..frames.min(MAX_FRAMES) * (OUTPUT_CHANNELS - 2)]
+    }
+    fn dsp_frame(&mut self, has_solo: bool) -> [f32; OUTPUT_CHANNELS] {
         if self.mod_counter == 0 && self.routes.iter().any(|r| r.amount != 0.) {
             self.refresh();
         }
@@ -501,6 +519,7 @@ impl Engine {
         }
         self.smooth_master += (self.master - self.smooth_master) * 0.004;
         let mut mixed = [0i16; 2];
+        let mut stems = [[0i16; 2]; TRACKS];
         for v in 0..VOICES {
             let x = self.voices[v].tick(v, firmware::RATE, &self.sine);
             let t = self.voices[v].active_track;
@@ -515,20 +534,37 @@ impl Engine {
                 let contribution =
                     firmware::sat16(((a * self.pan[v][c] * self.smooth_master) * 32768.) as i32);
                 *m = m.saturating_add(contribution);
+                if self.capture_stems {
+                    stems[t][c] = stems[t][c].saturating_add(contribution);
+                }
             }
         }
         for t in 0..TRACKS {
             let a = self.samples[t].tick() * self.smooth_levels[t];
             self.meters[t] = self.meters[t].max(a.abs());
             for (c, m) in mixed.iter_mut().enumerate() {
-                *m = m.saturating_add(firmware::sat16(
+                let contribution = firmware::sat16(
                     (a * self.pan[t.min(5)][c] * self.smooth_master * 32768.) as i32,
-                ));
+                );
+                *m = m.saturating_add(contribution);
+                if self.capture_stems {
+                    stems[t][c] = stems[t][c].saturating_add(contribution);
+                }
             }
         }
-        self.fx
-            .tick_pcm(mixed, firmware::RATE)
-            .map(|x| x as f32 / 32768.)
+        let mut out = [0.; OUTPUT_CHANNELS];
+        let main = self.fx.tick_pcm(mixed, firmware::RATE);
+        for c in 0..2 {
+            out[c] = main[c] as f32 / 32768.;
+        }
+        if self.capture_stems {
+            for t in 0..TRACKS {
+                for c in 0..2 {
+                    out[2 + t * 2 + c] = stems[t][c] as f32 / 32768.;
+                }
+            }
+        }
+        out
     }
     pub fn fx_values(&self) -> [f32; 15] {
         [

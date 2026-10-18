@@ -13,6 +13,7 @@
 #include "../plugin/engine.h"
 
 #define REQUIRE(x) do{if(!(x)){std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
+#include "plugin-output-check.h"
 struct Transport{double bpm=120.,beat=0.,sample=0.;bool playing=true;};
 static OSStatus beatTempo(void* p,Float64* beat,Float64* bpm){auto&t=*static_cast<Transport*>(p);if(beat)*beat=t.beat;if(bpm)*bpm=t.bpm;return noErr;}
 static OSStatus transport(void* p,Boolean* play,Boolean* changed,Float64* sample,Boolean* cycle,Float64* start,Float64* end){auto&t=*static_cast<Transport*>(p);if(play)*play=t.playing;if(changed)*changed=false;if(sample)*sample=t.sample;if(cycle)*cycle=false;if(start)*start=0.;if(end)*end=4.;return noErr;}
@@ -23,6 +24,50 @@ static void compare(const float* l,const float* r,std::vector<float>&expected,in
     if(std::abs(actual-want)>0.000002f){std::fprintf(stderr,"sample %d/%d actual %.9g reference %.9g\n",i,c,actual,want);REQUIRE(false);}
     peak=std::max(peak,std::abs(double(actual)));
   }
+}
+static void auMulti(AudioComponent component,double rate){
+  AudioUnit unit=nullptr;REQUIRE(AudioComponentInstanceNew(component,&unit)==noErr);
+  UInt32 count=0,size=sizeof(count);REQUIRE(AudioUnitGetProperty(unit,kAudioUnitProperty_ElementCount,kAudioUnitScope_Output,0,&count,&size)==noErr);REQUIRE(count==8);
+  AudioStreamBasicDescription format{rate,kAudioFormatLinearPCM,kAudioFormatFlagIsFloat|kAudioFormatFlagIsNonInterleaved|kAudioFormatFlagsNativeEndian,4,1,4,2,32,0};
+  for(UInt32 bus=0;bus<8;bus++){
+    REQUIRE(AudioUnitSetProperty(unit,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Output,bus,&format,sizeof(format))==noErr);
+    CFStringRef name=nullptr;size=sizeof(name);REQUIRE(AudioUnitGetProperty(unit,kAudioUnitProperty_ElementName,kAudioUnitScope_Output,bus,&name,&size)==noErr);
+    char text[64]{};REQUIRE(CFStringGetCString(name,text,sizeof(text),kCFStringEncodingUTF8));REQUIRE(std::strcmp(text,kOutputNames[bus])==0);CFRelease(name);
+  }
+  UInt32 maximum=1024;REQUIRE(AudioUnitSetProperty(unit,kAudioUnitProperty_MaximumFramesPerSlice,kAudioUnitScope_Global,0,&maximum,sizeof(maximum))==noErr);
+  Transport time;HostCallbackInfo callbacks{};callbacks.hostUserData=&time;callbacks.beatAndTempoProc=beatTempo;callbacks.transportStateProc=transport;
+  REQUIRE(AudioUnitSetProperty(unit,kAudioUnitProperty_HostCallbacks,kAudioUnitScope_Global,0,&callbacks,sizeof(callbacks))==noErr);
+  REQUIRE(AudioUnitSetParameter(unit,283,kAudioUnitScope_Global,0,1.,0)==noErr);REQUIRE(AudioUnitSetParameter(unit,284,kAudioUnitScope_Global,0,1.,0)==noErr);
+  REQUIRE(AudioUnitInitialize(unit)==noErr);
+  void* reference=lxrp_create(rate);lxrp_set(reference,283,1.);lxrp_set(reference,284,1.);
+  std::array<std::array<float,1024>,16> pcm{};
+  struct Stereo{UInt32 count;AudioBuffer data[2];};std::array<Stereo,8> audio{};
+  for(int bus=0;bus<8;bus++)audio[bus]={2,{{1,4096,pcm[bus*2].data()},{1,4096,pcm[bus*2+1].data()}}};
+  std::vector<float> expected(1024*16);int64_t sample=0;
+  for(int track=0;track<7;track++){
+    double peak=0.;
+    for(int block=0;block<4;block++){
+      lxrp_transport(reference,120.,time.beat,true);
+      if(block==0){
+        REQUIRE(MusicDeviceMIDIEvent(unit,0xbf,120,0,0)==noErr);lxrp_midi(reference,0xbf,120,0);
+        REQUIRE(MusicDeviceMIDIEvent(unit,0x9f,kDrumNotes[track],100,17)==noErr);
+        REQUIRE(MusicDeviceMIDIEvent(unit,0x8f,kDrumNotes[track],0,33)==noErr);
+        lxrp_process_multi(reference,expected.data(),17);lxrp_midi(reference,0x9f,kDrumNotes[track],100);
+        lxrp_process_multi(reference,expected.data()+17*16,16);lxrp_midi(reference,0x8f,kDrumNotes[track],0);
+        lxrp_process_multi(reference,expected.data()+33*16,1024-33);
+      }else lxrp_process_multi(reference,expected.data(),1024);
+      AudioTimeStamp stamp{};stamp.mFlags=kAudioTimeStampSampleTimeValid;stamp.mSampleTime=sample;AudioUnitRenderActionFlags flags=0;
+      // Pull one auxiliary first, without a preceding Mix render. Re-reading all
+      // buses at this timestamp must return the same block without advancing DSP.
+      int target=track+1;REQUIRE(AudioUnitRender(unit,&flags,&stamp,target,1024,reinterpret_cast<AudioBufferList*>(&audio[target]))==noErr);
+      peak=std::max(peak,compareOutput(pcm[target*2].data(),pcm[target*2+1].data(),expected.data(),1024,target));
+      for(int bus=7;bus>=0;bus--){REQUIRE(AudioUnitRender(unit,&flags,&stamp,bus,1024,reinterpret_cast<AudioBufferList*>(&audio[bus]))==noErr);compareOutput(pcm[bus*2].data(),pcm[bus*2+1].data(),expected.data(),1024,bus);}
+      sample+=1024;time.sample=sample;time.beat+=1024/rate*2.;
+    }
+    REQUIRE(peak>0.001);
+  }
+  lxrp_destroy(reference);AudioUnitUninitialize(unit);AudioComponentInstanceDispose(unit);
+  std::printf("PASS AU %.0f Hz: 8 named stereo buses, direct drums, sparse/reversed/repeated bus pulls, note offsets, no cross-talk\n",rate);
 }
 static void au(const char* path){
   CFURLRef url=CFURLCreateFromFileSystemRepresentation(nullptr,reinterpret_cast<const UInt8*>(path),std::strlen(path),true);
@@ -45,7 +90,7 @@ static void au(const char* path){
     REQUIRE(AudioUnitGetProperty(unit,kAudioUnitProperty_MaximumFramesPerSlice,kAudioUnitScope_Global,0,&maximumFrames,&maximumSize)==noErr);
     REQUIRE(maximumFrames>0);
     void* reference=lxrp_create(rate);REQUIRE(reference);
-    for(int p=0;p<283;p++){AudioUnitParameterValue v;REQUIRE(AudioUnitGetParameter(unit,p,kAudioUnitScope_Global,0,&v)==noErr);lxrp_set(reference,p,v);}
+    for(int p=0;p<kDXMParams;p++){AudioUnitParameterValue v;REQUIRE(AudioUnitGetParameter(unit,p,kAudioUnitScope_Global,0,&v)==noErr);lxrp_set(reference,p,v);}
     Float64 latency=0.;UInt32 size=sizeof(latency);REQUIRE(AudioUnitGetProperty(unit,kAudioUnitProperty_Latency,kAudioUnitScope_Global,0,&latency,&size)==noErr);
     std::fprintf(stderr,"AU rate %.0f latency %.6f samples\n",rate,latency*rate);
     REQUIRE(std::abs(latency*rate-(int)std::lround(15.5*rate/44140.625))<0.01);
@@ -72,6 +117,7 @@ static void au(const char* path){
     AudioUnitParameterValue restored;REQUIRE(AudioUnitGetParameter(unit,273,kAudioUnitScope_Global,0,&restored)==noErr);REQUIRE(std::abs(restored)<.00001);
     CFRelease(saved);lxrp_destroy(reference);AudioUnitUninitialize(unit);AudioComponentInstanceDispose(unit);
     std::printf("PASS AU %.0f Hz: MIDI offsets, overlap/fallback, transport, tempo, seek/loop, stop, variable blocks, latency, state; peak %.6f\n",rate,peak);
+    auMulti(component,rate);
   }
   CFRelease(url);CFRelease(bundle);
 }
@@ -79,6 +125,41 @@ struct Events{clap_input_events_t api;std::vector<clap_event_midi_t> data;
  Events(){api.ctx=this;api.size=[](const clap_input_events_t*p)->uint32_t{return static_cast<Events*>(p->ctx)->data.size();};api.get=[](const clap_input_events_t*p,uint32_t i)->const clap_event_header_t*{return &static_cast<Events*>(p->ctx)->data[i].header;};}
  void add(int time,int status,int key,int value){clap_event_midi_t e{};e.header.size=sizeof(e);e.header.time=time;e.header.type=CLAP_EVENT_MIDI;e.data[0]=status;e.data[1]=key;e.data[2]=value;data.push_back(e);}
 };
+static void clapMulti(const clap_plugin_factory_t* factory,const clap_host_t* host,double rate){
+  auto plugin=factory->create_plugin(factory,host,factory->get_plugin_descriptor(factory,0)->id);REQUIRE(plugin&&plugin->init(plugin));
+  auto ports=static_cast<const clap_plugin_audio_ports_t*>(plugin->get_extension(plugin,CLAP_EXT_AUDIO_PORTS));
+  auto configs=static_cast<const clap_plugin_audio_ports_config_t*>(plugin->get_extension(plugin,CLAP_EXT_AUDIO_PORTS_CONFIG));
+  REQUIRE(ports&&configs&&configs->count(plugin)==8);clap_audio_ports_config_t config{};
+  REQUIRE(configs->get(plugin,0,&config)&&config.output_port_count==8&&config.has_main_output&&config.main_output_channel_count==2);
+  REQUIRE(configs->select(plugin,0));REQUIRE(ports->count(plugin,false)==8);
+  for(int bus=0;bus<8;bus++){clap_audio_port_info_t info{};REQUIRE(ports->get(plugin,bus,false,&info));REQUIRE(info.channel_count==2&&std::strcmp(info.name,kOutputNames[bus])==0);}
+  auto params=static_cast<const clap_plugin_params_t*>(plugin->get_extension(plugin,CLAP_EXT_PARAMS));REQUIRE(params);
+  std::array<clap_event_param_value_t,2> values{};
+  for(int n=0;n<2;n++){auto&v=values[n];v.header.size=sizeof(v);v.header.type=CLAP_EVENT_PARAM_VALUE;v.param_id=283+n;v.value=1.;v.note_id=v.port_index=v.channel=v.key=-1;}
+  clap_input_events_t changes{};changes.ctx=&values;changes.size=[](const clap_input_events_t*)->uint32_t{return 2;};changes.get=[](const clap_input_events_t* events,uint32_t n)->const clap_event_header_t*{return &(*static_cast<std::array<clap_event_param_value_t,2>*>(events->ctx))[n].header;};
+  clap_output_events_t outputEvents{};outputEvents.try_push=[](const clap_output_events_t*,const clap_event_header_t*){return true;};params->flush(plugin,&changes,&outputEvents);
+  REQUIRE(plugin->activate(plugin,rate,1,1024));REQUIRE(plugin->start_processing(plugin));
+  void* reference=lxrp_create(rate);lxrp_set(reference,283,1.);lxrp_set(reference,284,1.);
+  std::array<std::array<float,1024>,16> pcm{};std::array<std::array<float*,2>,8> pointers{};std::array<clap_audio_buffer_t,8> audio{};
+  for(int bus=0;bus<8;bus++){pointers[bus]={pcm[bus*2].data(),pcm[bus*2+1].data()};audio[bus].data32=pointers[bus].data();audio[bus].channel_count=2;}
+  std::vector<float> expected(1024*16);int64_t sample=0;
+  for(int track=0;track<7;track++){
+    double peak=0.;
+    for(int block=0;block<4;block++){
+      Events events;if(block==0){events.add(0,0xbf,120,0);events.add(17,0x9f,kDrumNotes[track],100);events.add(33,0x8f,kDrumNotes[track],0);}
+      clap_event_transport_t transport{};transport.flags=CLAP_TRANSPORT_HAS_TEMPO|CLAP_TRANSPORT_HAS_BEATS_TIMELINE|CLAP_TRANSPORT_IS_PLAYING;transport.tempo=120.;transport.song_pos_beats=std::llround(sample/rate*2.*CLAP_BEATTIME_FACTOR);
+      lxrp_transport(reference,120.,double(transport.song_pos_beats)/CLAP_BEATTIME_FACTOR,true);
+      int at=0;for(const auto&e:events.data){lxrp_process_multi(reference,expected.data()+at*16,e.header.time-at);at=e.header.time;lxrp_midi(reference,e.data[0],e.data[1],e.data[2]);}lxrp_process_multi(reference,expected.data()+at*16,1024-at);
+      clap_process_t data{};data.steady_time=sample;data.frames_count=1024;data.transport=&transport;data.audio_outputs=audio.data();data.audio_outputs_count=8;data.in_events=&events.api;data.out_events=&outputEvents;
+      REQUIRE(plugin->process(plugin,&data)!=CLAP_PROCESS_ERROR);
+      for(int bus=0;bus<8;bus++){double p=compareOutput(pcm[bus*2].data(),pcm[bus*2+1].data(),expected.data(),1024,bus);if(bus==track+1)peak=std::max(peak,p);else REQUIRE(p==0.);}
+      sample+=1024;
+    }
+    REQUIRE(peak>0.001);
+  }
+  plugin->stop_processing(plugin);plugin->deactivate(plugin);lxrp_destroy(reference);plugin->destroy(plugin);
+  std::printf("PASS CLAP %.0f Hz: 8 named stereo buses, direct drums, note offsets, no cross-talk\n",rate);
+}
 static void clap(const char* path){
   void* library=dlopen(path,RTLD_NOW|RTLD_LOCAL);if(!library)std::fprintf(stderr,"%s\n",dlerror());REQUIRE(library);
   auto entry=static_cast<const clap_plugin_entry_t*>(dlsym(library,"clap_entry"));REQUIRE(entry&&entry->init(path));
@@ -87,11 +168,11 @@ static void clap(const char* path){
   host.get_extension=[](const clap_host_t*,const char*)->const void*{return nullptr;};host.request_restart=host.request_process=host.request_callback=[](const clap_host_t*){};
   for(double rate:{44100.,48000.,96000.,192000.}){
     auto plugin=factory->create_plugin(factory,&host,factory->get_plugin_descriptor(factory,0)->id);REQUIRE(plugin&&plugin->init(plugin));
-    auto params=static_cast<const clap_plugin_params_t*>(plugin->get_extension(plugin,CLAP_EXT_PARAMS));REQUIRE(params&&params->count(plugin)==283);
+    auto params=static_cast<const clap_plugin_params_t*>(plugin->get_extension(plugin,CLAP_EXT_PARAMS));REQUIRE(params&&params->count(plugin)==kDXMParams);
     clap_output_events_t outEvents{};outEvents.try_push=[](const clap_output_events_t*,const clap_event_header_t*){return true;};
 
     REQUIRE(plugin->activate(plugin,rate,1,1024));REQUIRE(plugin->start_processing(plugin));
-    void* reference=lxrp_create(rate);for(int id=0;id<283;id++){double value=0.;REQUIRE(params->get_value(plugin,id,&value));char name[64];float b[3];lxrp_info(id,name,sizeof(name),b);if(!b[2])value=b[0]+value*(b[1]-b[0]);lxrp_set(reference,id,value);}
+    void* reference=lxrp_create(rate);for(int id=0;id<kDXMParams;id++){double value=0.;REQUIRE(params->get_value(plugin,id,&value));char name[64];float b[3];lxrp_info(id,name,sizeof(name),b);if(!b[2])value=b[0]+value*(b[1]-b[0]);lxrp_set(reference,id,value);}
     auto latency=static_cast<const clap_plugin_latency_t*>(plugin->get_extension(plugin,CLAP_EXT_LATENCY));REQUIRE(latency&&latency->get(plugin)==(int)std::lround(15.5*rate/44140.625));
     std::array<float,1024> l{},r{},zero{};float* inputs[2]={zero.data(),zero.data()};float* outputs[2]={l.data(),r.data()};
     clap_audio_buffer_t inputBuffer{},outputBuffer{};inputBuffer.data32=inputs;inputBuffer.channel_count=2;outputBuffer.data32=outputs;outputBuffer.channel_count=2;
@@ -121,6 +202,7 @@ static void clap(const char* path){
     struct Reader{std::vector<uint8_t>*bytes;size_t offset=0;}reader{&bytes};clap_istream_t input{};input.ctx=&reader;input.read=[](const clap_istream_t*p,void*b,uint64_t size)->int64_t{auto&r=*static_cast<Reader*>(p->ctx);size=std::min<uint64_t>(size,r.bytes->size()-r.offset);std::memcpy(b,r.bytes->data()+r.offset,size);r.offset+=size;return size;};REQUIRE(state->load(plugin,&input));
     double restored=0.;REQUIRE(params->get_value(plugin,273,&restored)&&std::abs(restored)<.00001);
     lxrp_destroy(reference);plugin->destroy(plugin);std::printf("PASS CLAP %.0f Hz: MIDI offsets, overlap/fallback, transport, tempo, seek/loop, stop, variable blocks, latency, state; peak %.6f\n",rate,peak);
+    clapMulti(factory,&host,rate);
   }
   entry->deinit();dlclose(library);
 }

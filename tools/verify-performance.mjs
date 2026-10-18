@@ -22,6 +22,9 @@ assert.deepEqual(result.hits.filter(h=>h.track===1).map(h=>h.frame),[0,11025]);
 assert.deepEqual(result.hits.filter(h=>h.track===2).map(h=>h.frame),[0,3675,7350,11025,14700,18375]);
 const wav=wavBytes(result.pcm,44100);assert.equal(new DataView(wav.buffer).getUint32(40,true),result.pcm.length*2);assert(result.pcm.every(Number.isFinite));
 const midi=midiBytes(result.hits,120,1);assert.equal(new TextDecoder().decode(midi.slice(0,4)),'MThd');assert.equal(new DataView(midi.buffer).getUint16(10),8);
+// Exported percussion must address the selected drums, even on pitched steps.
+const mapped=midiBytes([{track:3,frame:0,note:7,velocity:1}],120,1,{drumNotes:[36,45,47,127,49,42,46]});
+assert([...mapped].some((x,i)=>x===153&&mapped[i+1]===127&&mapped[i+2]===127));
 const gate=midiBytes([],120,4,{gateNote:26});assert.equal(new DataView(gate.buffer).getUint16(10),2);assert([...gate].some((x,i)=>x===144&&gate[i+1]===26));
 const fixture=readWav((await readFile(new URL('../tests/fixtures/performance-sample.wav',import.meta.url))).buffer.slice(0));
 assert.equal(fixture.rate,44100);assert.equal(fixture.pcm.length,11025);

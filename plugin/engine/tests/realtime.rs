@@ -37,10 +37,12 @@ fn midi_transport_and_render_allocate_nothing() {
     for r in 0..16 {
         i.engine.set_route(r, (r % 9) as u8, (r % 6) as u8, 12, 0.1);
     }
-    let mut replacement=i.copy_project(96000.);
+    let mut replacement = i.copy_project(96000.);
     let mut audio = [0.; 2048];
     TRACK.store(true, Ordering::SeqCst);
-    i.command(15, [0.; 8]);i.render(&mut audio);i.command(14, [0.; 8]);
+    i.command(15, [0.; 8]);
+    i.render(&mut audio);
+    i.command(14, [0.; 8]);
     for k in 0..128 {
         i.transport(60. + k as f64 * 9., k as f64 * 0.25, true);
         i.midi(0x90, k, 100);
@@ -51,8 +53,19 @@ fn midi_transport_and_render_allocate_nothing() {
     i.transport(120., 0., false);
     i.midi(0xb0, 120, 0);
     i.render(&mut audio);
-    i.midi(0x90,24,127);i.render(&mut audio);
-    replacement.inherit_transport(&i);replacement.engine.take_audio(&mut i.engine);replacement.render(&mut audio);
+    i.midi(0x90, 24, 127);
+    i.render(&mut audio);
+    replacement.inherit_transport(&i);
+    replacement.engine.take_audio(&mut i.engine);
+    replacement.render(&mut audio);
+    let mut stems = [0.; 16384];
+    i.set(283, 1.);
+    i.set(284, 1.);
+    for note in lxr02_plugin::DEFAULT_DRUM_NOTES {
+        i.midi(0x9f, note, 100);
+        i.render_multi(&mut stems);
+        i.midi(0x8f, note, 0);
+    }
     TRACK.store(false, Ordering::SeqCst);
     assert_eq!(ALLOCS.load(Ordering::SeqCst), 0);
 }

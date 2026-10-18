@@ -21,9 +21,57 @@
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 #define REQUIRE(x) do { if (!(x)) { std::fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); std::exit(1); } } while (0)
+#include "plugin-output-check.h"
 static void change(ParameterChanges& changes, ParamID id, double value) {
   int32 index=0; auto queue=changes.addParameterData(id,index);
   REQUIRE(queue&&queue->addPoint(0,value,index)==kResultOk);
+}
+static void multiOutput(IPluginFactory* factory,const PClassInfo& info,HostApplication& host,double rate){
+  IComponent* raw=nullptr;REQUIRE(factory->createInstance(info.cid,IComponent::iid,reinterpret_cast<void**>(&raw))==kResultOk);
+  auto component=owned(raw);REQUIRE(component->initialize(&host)==kResultOk);
+  FUnknownPtr<IAudioProcessor> processor(component);FUnknownPtr<IEditController> controller(component);REQUIRE(processor&&controller);
+  FUnknownPtr<IMidiMapping> mapping(component);ParamID allSoundOff=0;REQUIRE(mapping&&mapping->getMidiControllerAssignment(0,15,120,allSoundOff)==kResultOk);
+  REQUIRE(component->getBusCount(kAudio,kOutput)==8);
+  SpeakerArrangement arrangements[8];std::fill(std::begin(arrangements),std::end(arrangements),SpeakerArr::kStereo);
+  REQUIRE(processor->setBusArrangements(nullptr,0,arrangements,8)==kResultOk);
+  for(int bus=0;bus<8;bus++){
+    BusInfo busInfo{};REQUIRE(component->getBusInfo(kAudio,kOutput,bus,busInfo)==kResultOk);REQUIRE(busInfo.channelCount==2);
+    for(size_t c=0;c<=std::strlen(kOutputNames[bus]);c++)REQUIRE(busInfo.name[c]==kOutputNames[bus][c]);
+    REQUIRE(component->activateBus(kAudio,kOutput,bus,true)==kResultOk);
+  }
+  REQUIRE(component->activateBus(kEvent,kInput,0,true)==kResultOk);
+  ProcessSetup setup{kRealtime,kSample32,1024,rate};REQUIRE(processor->setupProcessing(setup)==kResultOk);
+  REQUIRE(component->setActive(true)==kResultOk);REQUIRE(processor->setProcessing(true)==kResultOk);
+  void* reference=lxrp_create(rate);lxrp_set(reference,283,1.);lxrp_set(reference,284,1.);
+  ParameterChanges changes;change(changes,283,1.);change(changes,284,1.);
+  std::array<std::array<float,1024>,16> pcm{};std::array<std::array<float*,2>,8> pointers{};std::array<AudioBusBuffers,8> outputs{};
+  for(int bus=0;bus<8;bus++){pointers[bus]={pcm[bus*2].data(),pcm[bus*2+1].data()};outputs[bus].numChannels=2;outputs[bus].channelBuffers32=pointers[bus].data();}
+  std::vector<float> expected(1024*16);int64 sample=0;
+  for(int track=0;track<7;track++){
+    double peak=0.;
+    // Keep only one auxiliary bus active on alternate voices: disabled buses
+    // must not shift the channel index of a later drum.
+    const bool sparse=track%2;
+    for(int bus=0;bus<8;bus++)REQUIRE(component->activateBus(kAudio,kOutput,bus,!sparse||bus==0||bus==track+1)==kResultOk);
+    for(int block=0;block<4;block++){
+      ProcessContext context{};context.state=ProcessContext::kTempoValid|ProcessContext::kProjectTimeMusicValid|ProcessContext::kPlaying;context.sampleRate=rate;context.projectTimeSamples=sample;context.projectTimeMusic=sample/rate*2.;context.tempo=120.;
+      lxrp_transport(reference,120.,context.projectTimeMusic,true);EventList events;
+      if(block==0){
+        // Finish the preceding percussion sound without changing mode.
+        change(changes,allSoundOff,0.);lxrp_midi(reference,0xbf,120,0);
+        Event on{};on.type=Event::kNoteOnEvent;on.sampleOffset=17;on.noteOn.channel=15;on.noteOn.pitch=kDrumNotes[track];on.noteOn.velocity=100.f/127.f;on.noteOn.noteId=-1;REQUIRE(events.addEvent(on)==kResultOk);
+        Event off{};off.type=Event::kNoteOffEvent;off.sampleOffset=33;off.noteOff.channel=15;off.noteOff.pitch=kDrumNotes[track];off.noteOff.noteId=-1;REQUIRE(events.addEvent(off)==kResultOk);
+        lxrp_process_multi(reference,expected.data(),17);lxrp_midi(reference,0x9f,kDrumNotes[track],100);lxrp_process_multi(reference,expected.data()+17*16,16);lxrp_midi(reference,0x8f,kDrumNotes[track],0);lxrp_process_multi(reference,expected.data()+33*16,1024-33);
+      }else lxrp_process_multi(reference,expected.data(),1024);
+      ProcessData data{};data.processMode=kRealtime;data.symbolicSampleSize=kSample32;data.numSamples=1024;data.numOutputs=8;data.outputs=outputs.data();data.inputEvents=&events;data.inputParameterChanges=&changes;data.processContext=&context;
+      REQUIRE(processor->process(data)==kResultOk);
+      for(int bus=0;bus<8;bus++)if(!sparse||bus==0||bus==track+1){double p=compareOutput(pcm[bus*2].data(),pcm[bus*2+1].data(),expected.data(),1024,bus);if(bus==track+1)peak=std::max(peak,p);else REQUIRE(p==0.);}
+      changes.clearQueue();sample+=1024;
+    }
+    REQUIRE(peak>0.001);
+  }
+  REQUIRE(processor->setProcessing(false)==kResultOk);REQUIRE(component->setActive(false)==kResultOk);lxrp_destroy(reference);REQUIRE(component->terminate()==kResultOk);
+  std::printf("PASS VST3 %.0f Hz: 8 named stereo buses, direct drums, sparse auxiliaries, note offsets, no cross-talk\n",rate);
 }
 int main(int argc,char** argv) {
   REQUIRE(argc==2);
@@ -56,7 +104,7 @@ int main(int argc,char** argv) {
     REQUIRE(processor->setProcessing(true)==kResultOk);
     void* reference=lxrp_create(rate); REQUIRE(reference);
     ParameterChanges changes;
-    for(int p=0;p<283;p++){char name[64];float b[3];lxrp_info(p,name,sizeof(name),b);double normalized=controller->getParamNormalized(p);lxrp_set(reference,p,b[0]+normalized*(b[1]-b[0]));}
+    for(int p=0;p<kDXMParams;p++){char name[64];float b[3];lxrp_info(p,name,sizeof(name),b);double normalized=controller->getParamNormalized(p);lxrp_set(reference,p,b[0]+normalized*(b[1]-b[0]));}
     REQUIRE(processor->getLatencySamples()==(int)std::lround(15.5*rate/44140.625));
     std::array<float,1024> left{},right{},zero{};
     float* ins[2]={zero.data(),zero.data()};float* outs[2]={left.data(),right.data()};
@@ -94,6 +142,7 @@ int main(int argc,char** argv) {
     REQUIRE(std::abs(controller->getParamNormalized(273))<0.00001);
     lxrp_destroy(reference);REQUIRE(component->terminate()==kResultOk);
     std::printf("PASS VST3 %.0f Hz: note offsets, transport, tempo, seek/loop, stop, variable blocks, latency, state; peak %.6f\n",rate,peak);
+    multiOutput(factory,info,host,rate);
   }
   factory=nullptr;REQUIRE(leave());CFRelease(bundle);CFRelease(url);
 }

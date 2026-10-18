@@ -3,6 +3,7 @@
     "url": "https://github.com/iPlug2/iPlug2.git",
     "commit": "d54f69050f517e43b941d88c2a170f0a840b9ee4",
     "patches": [
+      "plugin/patches/iplug2-au-multiout.patch",
       "plugin/patches/iplug2-webview-keyboard.patch"
     ]
   },

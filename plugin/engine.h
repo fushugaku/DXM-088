@@ -12,6 +12,7 @@ void lxrp_command(void*,uint32_t,const double*);
 void lxrp_midi(void*,uint8_t,uint8_t,uint8_t);
 void lxrp_transport(void*,double,double,bool);
 void lxrp_process(void*,float*,uint32_t);
+void lxrp_process_multi(void*,float*,uint32_t);
 void lxrp_status(void*,float*);
 bool lxrp_preview(void*);
 size_t lxrp_json(void*,uint8_t*,size_t);

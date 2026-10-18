@@ -27,6 +27,16 @@
     <div class="kit-control"><span class="micro-label">KIT</span><div id="kit-select"></div></div>
     <button id="audio-status" class="audio-status" title="Enable audio"><i></i><span>Audio off</span></button>
   </section>
+  <section id="native-routing" class="midi-routing panel" aria-label="MIDI and audio routing" hidden>
+    <div class="routing-toolbar">
+      <div class="routing-control"><span class="micro-label">MIDI</span><div class="routing-switch" role="group" aria-label="MIDI mode"><button type="button" data-midi-mode="0" aria-pressed="true">Patterns</button><button type="button" data-midi-mode="1" aria-pressed="false">Drums</button></div></div>
+      <div class="routing-control"><span class="micro-label">OUTPUT</span><div class="routing-switch" role="group" aria-label="Output routing"><button type="button" data-output-mode="0" aria-pressed="true">Mix</button><button type="button" data-output-mode="1" aria-pressed="false">Separate</button></div></div>
+      <label id="pattern-origin" class="native-note-control"><span>A01</span><input id="pattern-note-base" aria-label="A01 MIDI note" type="number" min="0" max="120" value="0"><output id="pattern-note-range">C−2–G8</output></label>
+      <span id="routing-summary" class="routing-summary"></span>
+    </div>
+    <div id="drum-note-map" class="drum-note-map" role="group" aria-label="Drum MIDI notes" hidden></div>
+    <p id="separate-output-help" class="routing-help" hidden>Drum 1–Open Hat → separate stereo outputs · before master FX · Mix is silent</p>
+  </section>
   <main>
     <div class="upper-deck">
       <section class="synth panel" aria-label="Voice editor">
@@ -48,7 +58,7 @@
     <section id="performance-panel" class="panel performance-panel" aria-label="Performance and sound"><nav id="feature-tabs" class="tabs feature-tabs" role="tablist" aria-label="Performance sections"></nav><div id="feature-body" class="feature-body" role="tabpanel"></div></section>
     <section class="fx-panel panel" aria-label="Master effects"><div class="fx-select"><h2>MASTER FX</h2><div id="fx-type"></div></div><div id="fx-controls" class="fx-controls"></div><div class="morph-control"><div><label for="morph">MORPH</label><button id="morph-target" class="micro-label">→ ALLOY</button><output id="morph-value">0%</output></div><input id="morph" type="range" min="0" max="1" step="0.01" value="0"></div></section>
   </main>
-  <footer class="footnote"><span><span class="status-dot"></span><span id="engine-info">Loading instrument…</span></span><span class="keyboard-hints"><kbd>SPACE</kbd> transport <span class="footer-sep">/</span> <kbd>A S D F G H J</kbd> triggers</span><span class="version">RUST ENGINE <span>0.6.1 / DSP 1.71</span></span></footer>
+  <footer class="footnote"><span><span class="status-dot"></span><span id="engine-info">Loading instrument…</span></span><span class="keyboard-hints"><kbd>SPACE</kbd> transport <span class="footer-sep">/</span> <kbd>A S D F G H J</kbd> triggers</span><span class="version">RUST ENGINE <span>0.7.0 / DSP 1.71</span></span></footer>
 </div>
 <dialog id="step-dialog"><div class="dialog-heading"><div><span class="micro-label">STEP EDITOR</span><h2 id="step-title">Drum 1 · 01</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="step-fields" class="step-fields"></div><h3 class="micro-label lock-title">PARAMETER LOCKS</h3><div id="step-locks"></div><div class="dialog-footer"><button id="step-remove" class="text-button">Remove step</button><button class="outline-button close-dialog">Done</button></div></dialog>
 <dialog id="generator-dialog"><div class="dialog-heading"><div><span class="micro-label">EUCLIDEAN GENERATOR</span><h2 id="generator-title">Drum 1</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="generator-preview" class="generator-preview"></div><div class="generator-fields"><label>HITS<input id="gen-hits" type="number" min="0" max="64" value="5"></label><label>LENGTH<input id="gen-length" type="number" min="1" max="64" value="16"></label><label>ROTATION<input id="gen-rotation" type="number" min="0" max="63" value="0"></label></div><div class="dialog-footer"><span class="secondary" id="generator-summary">5 hits in 16 steps</span><button id="apply-generator" class="primary-button">Apply to track</button></div></dialog>

@@ -14,6 +14,7 @@ public:
   void ProcessBlock(iplug::sample**,iplug::sample**,int) override;
   void ProcessMidiMsg(const iplug::IMidiMsg&) override;
   void OnReset() override;
+  void GetBusName(iplug::ERoute,int,int,WDL_String&) const override;
   void OnActivate(bool active) override {if(active)OnReset();}
   void OnIdle() override;
   void OnUIOpen() override;
@@ -35,7 +36,8 @@ private:
   void reset() noexcept override;
   bool notePortsInfo(uint32_t,bool,clap_note_port_info*) const noexcept override;
 #endif
-  static constexpr int kParams=283;
+  static constexpr int kParams=292;
+  static constexpr int kChannels=16;
   struct Ready {void* engine;uint64_t revision;};
   struct Command {uint64_t revision;uint32_t op;std::array<double,8> args{};};
   static constexpr uint32_t kQueue=2048;
@@ -60,7 +62,7 @@ private:
   std::atomic<bool> mOverflow{false},mProjectDirty{false},mEditorReady{false};
   std::atomic<bool> mPreview{false};
   std::atomic<float> mRate{44100.f};
-  std::array<float,8192> mAudio{};
+  std::array<float,4096*kChannels> mAudio{};
   std::array<float,kParams> mParamCache{};
   std::array<float,kParams> mUISent{};
   std::array<bool,kParams> mUIGestures{};

@@ -1,5 +1,5 @@
 //! Per-instance instrument, host clock and MIDI gate. The audio path allocates nothing.
-use lxr02::{params::*, sequencer::PATTERNS, Engine, MAX_FRAMES};
+use lxr02::{params::*, sequencer::PATTERNS, Engine, MAX_FRAMES, OUTPUT_CHANNELS};
 use serde_json::{json, Value};
 use std::{
     ffi::{c_char, c_void},
@@ -7,7 +7,8 @@ use std::{
 };
 
 mod performance;
-pub const PARAMETERS: usize = 283;
+pub const PARAMETERS: usize = 292;
+pub const DEFAULT_DRUM_NOTES: [u8; 7] = [36, 45, 47, 38, 49, 42, 46];
 const FX_MIN: [f32; 15] = [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.];
 const FX_MAX: [f32; 15] = [
     7., 1., 0.743, 0.94, 1., 1., 1.5, 1., 1., 5., 1., 1., 1., 8., 1.,
@@ -79,6 +80,11 @@ pub struct Instrument {
     pub active_note: Option<u8>,
     pub base_note: u8,
     pub preview: bool,
+    /// 0: held notes select patterns; 1: one-shot drum notes.
+    pub midi_mode: u8,
+    /// 0: main stereo with shared FX; 1: seven individual pre-master-FX pairs.
+    pub output_mode: u8,
+    pub drum_notes: [u8; 7],
     beat: f64,
     bpm: f64,
     host_running: bool,
@@ -103,6 +109,9 @@ impl Instrument {
             active_note: None,
             base_note: 0,
             preview: false,
+            midi_mode: 0,
+            output_mode: 0,
+            drum_notes: DEFAULT_DRUM_NOTES,
             beat: 0.,
             bpm: 128.,
             host_running: false,
@@ -150,7 +159,10 @@ impl Instrument {
         self.host_running = old.host_running;
         self.expected = old.expected;
         self.last_tick = None;
-        if self.base_note == old.base_note {
+        if self.base_note == old.base_note
+            && self.midi_mode == old.midi_mode
+            && self.drum_notes == old.drum_notes
+        {
             self.held = old.held;
             self.order = old.order;
             self.velocities = old.velocities;
@@ -159,7 +171,7 @@ impl Instrument {
             self.serial = old.serial;
             self.active_note = old.active_note;
             self.preview = old.preview;
-            if self.active_note.is_some() {
+            if self.midi_mode == 0 && self.active_note.is_some() {
                 self.engine.immediate_pattern(old.engine.pattern);
             }
             if self.active_note.is_some() || self.preview {
@@ -181,6 +193,12 @@ impl Instrument {
             self.engine.modwheel = self.wheels[i / 128] as f32 / 127.;
         }
         let current = current_index.map(|i| (i % 128) as u8);
+        if self.midi_mode == 1 {
+            // Percussion tails are independent of note length. Only preview runs
+            // the internal sequencer in this mode.
+            self.active_note = current;
+            return;
+        }
         if current.is_some() {
             self.preview = false;
         }
@@ -198,7 +216,8 @@ impl Instrument {
                     self.engine.seek_clock(self.beat);
                     self.engine.play();
                 } else {
-                    self.engine.select_pattern(note.wrapping_sub(self.base_note) as usize % PATTERNS);
+                    self.engine
+                        .select_pattern(note.wrapping_sub(self.base_note) as usize % PATTERNS);
                 }
             } else {
                 self.engine.stop();
@@ -211,11 +230,21 @@ impl Instrument {
         let at = channel * 128 + key as usize;
         match status & 0xf0 {
             0x90 if value > 0 => {
+                if self.midi_mode == 1 && !self.drum_notes.contains(&key) {
+                    return;
+                }
                 self.serial = self.serial.wrapping_add(1);
                 self.held[at] = self.held[at].saturating_add(1);
                 self.order[at] = self.serial;
                 self.velocities[at] = value;
                 self.refresh_gate();
+                if self.midi_mode == 1 {
+                    for t in 0..7 {
+                        if self.drum_notes[t] == key {
+                            self.engine.trigger(t, value as f32 / 127., 0);
+                        }
+                    }
+                }
             }
             0x80 | 0x90 => {
                 self.held[at] = self.held[at].saturating_sub(1);
@@ -224,7 +253,8 @@ impl Instrument {
             0xb0 if key == 120 || key == 123 => {
                 self.held[channel * 128..channel * 128 + 128].fill(0);
                 self.refresh_gate();
-                if key == 120 {
+                if key == 120 || self.midi_mode == 1 {
+                    self.preview = false;
                     self.engine.panic();
                     self.last_tick = None;
                 }
@@ -271,24 +301,54 @@ impl Instrument {
         self.host_running = running;
     }
     pub fn render(&mut self, out: &mut [f32]) {
-        let step = self.bpm / (60. * self.engine.sample_rate as f64);
         for chunk in out.chunks_mut(MAX_FRAMES * 2) {
             let n = chunk.len() / 2;
-            chunk.copy_from_slice(self.engine.render_at(
-                n,
-                self.beat,
-                self.bpm,
-                self.active_note.is_some() || self.preview,
-            ));
-            if self.host_running || self.active_note.is_some() || self.preview {
-                self.beat += n as f64 * step;
+            let active = self.sequencer_active();
+            chunk.copy_from_slice(self.engine.render_at(n, self.beat, self.bpm, active));
+            if self.output_mode == 1 {
+                chunk.fill(0.);
             }
+            self.advance(n);
+        }
+    }
+    pub fn sequencer_active(&self) -> bool {
+        (self.midi_mode == 0 && self.active_note.is_some()) || self.preview
+    }
+    fn advance(&mut self, frames: usize) {
+        if self.host_running || self.sequencer_active() {
+            self.beat += frames as f64 * self.bpm / (60. * self.engine.sample_rate as f64);
         }
         self.expected = if self.host_running {
             Some(self.beat)
         } else {
             None
         };
+    }
+    /// Sixteen interleaved channels, rendered once with a shared sample clock.
+    pub fn render_multi(&mut self, out: &mut [f32]) {
+        for chunk in out.chunks_mut(MAX_FRAMES * OUTPUT_CHANNELS) {
+            let n = chunk.len() / OUTPUT_CHANNELS;
+            let active = self.sequencer_active();
+            let main = self.engine.render_at(n, self.beat, self.bpm, active);
+            for (frame, pair) in chunk
+                .chunks_exact_mut(OUTPUT_CHANNELS)
+                .zip(main.chunks_exact(2))
+            {
+                frame.fill(0.);
+                if self.output_mode == 0 {
+                    frame[..2].copy_from_slice(pair);
+                }
+            }
+            if self.output_mode == 1 {
+                for (frame, stem) in chunk
+                    .chunks_exact_mut(OUTPUT_CHANNELS)
+                    .zip(self.engine.stems(n).chunks_exact(14))
+                {
+                    frame[2..].copy_from_slice(stem);
+                }
+            }
+            self.advance(n);
+        }
     }
     pub fn get(&self, p: usize) -> f32 {
         let e = &self.engine;
@@ -307,6 +367,9 @@ impl Instrument {
             279 => e.fill as u8 as f32,
             280 => e.switch_quant as f32,
             281..283 => e.lfo_periods[p - 281],
+            283 => self.midi_mode as f32,
+            284 => self.output_mode as f32,
+            285..292 => self.drum_notes[p - 285] as f32,
             _ => 0.,
         }
     }
@@ -337,6 +400,26 @@ impl Instrument {
             279 => self.engine.fill = v >= 0.5,
             280 => self.engine.switch_quant = v.round().clamp(0., 2.) as u8,
             281..283 => self.engine.lfo_periods[p - 281] = v.clamp(0.0625, 32.),
+            283 => {
+                let mode = v.round().clamp(0., 1.) as u8;
+                if self.midi_mode != mode {
+                    self.all_off();
+                    self.engine.panic();
+                    self.midi_mode = mode;
+                }
+            }
+            284 => {
+                self.output_mode = v.round().clamp(0., 1.) as u8;
+                self.engine.capture_stems = self.output_mode == 1;
+            }
+            285..292 => {
+                let note = v.round().clamp(0., 127.) as u8;
+                if self.drum_notes[p - 285] != note {
+                    self.all_off();
+                    self.engine.panic();
+                    self.drum_notes[p - 285] = note;
+                }
+            }
             _ => {}
         }
     }
@@ -347,7 +430,7 @@ impl Instrument {
             0 => self.engine.set_param(u(0), u(1), f(2)),
             1 => self.engine.tempo(f(0), f(1)),
             2 => {
-                if self.active_note.is_none() {
+                if self.midi_mode == 1 || self.active_note.is_none() {
                     self.engine.immediate_pattern(u(0));
                 }
             }
@@ -372,7 +455,7 @@ impl Instrument {
             }
             14 => self.all_off(),
             15 => {
-                if self.active_note.is_none() {
+                if self.midi_mode == 1 || self.active_note.is_none() {
                     self.preview = true;
                     if !self.host_running {
                         self.beat = 0.;
@@ -419,6 +502,7 @@ impl Instrument {
         let e = &self.engine;
         let patterns:Vec<_>=e.patterns.iter().map(|p|json!({"lengths":p.tracks.map(|t|t.length),"divisions":p.tracks.map(|t|t.division),"delays":p.tracks.map(|t|t.delay),"grooves":p.tracks.map(|t|t.groove),"grooveAmounts":p.tracks.map(|t|t.groove_amount),"tracks":p.tracks.iter().map(|t|t.steps.iter().map(|s|json!({"v":s.velocity,"prob":s.probability,"note":s.note,"ratchet":s.ratchet,"micro":s.micro,"condition":s.condition,"every":s.every,"phase":s.phase,"locks":s.locks.map(|l|json!([l.param,l.value]))})).collect::<Vec<_>>()).collect::<Vec<_>>()})).collect();
         let mut j = json!({"format":"lxr02-web","version":4,"name":self.name,"kit":self.kit,"bpm":e.bpm,"swing":e.swing,"pattern":e.pattern,"params":e.params.map(|p|p.to_vec()),"patterns":patterns,"levels":e.levels,"muted":e.muted,"solo":e.solo,"fx":(234..249).map(|p|self.get(p)).collect::<Vec<_>>(),"morph":e.global_morph[0],"morphTarget":e.global_morph[1],"plugin":{"version":2,"baseNote":self.base_note,"nativeFileDrag":cfg!(target_os="macos")}});
+        j["plugin"] = json!({"version":3,"baseNote":self.base_note,"midiMode":self.midi_mode,"outputMode":self.output_mode,"drumNotes":self.drum_notes,"nativeFileDrag":cfg!(target_os="macos")});
         self.extensions(&mut j);
         j
     }
@@ -531,7 +615,23 @@ impl Instrument {
             num(&j["morphTarget"], 0., 4.)? as usize,
         );
         let default_origin = if j["version"] == 4 { 0. } else { 24. };
-        n.set(273, j["plugin"]["baseNote"].as_f64().unwrap_or(default_origin) as f32);
+        n.set(
+            273,
+            j["plugin"]["baseNote"].as_f64().unwrap_or(default_origin) as f32,
+        );
+        for (key, id) in [("midiMode", 283), ("outputMode", 284)] {
+            if let Some(value) = j["plugin"].get(key) {
+                n.set(id, num(value, 0., 1.)?);
+            }
+        }
+        if let Some(notes) = j["plugin"].get("drumNotes") {
+            if notes.as_array()?.len() != 7 {
+                return None;
+            }
+            for t in 0..7 {
+                n.set(285 + t, num(&notes[t], 0., 127.)?);
+            }
+        }
         n.load_extensions(j)?;
         // Legacy MIDI clips retain their origin and original eight patterns.
         for p in count..PATTERNS {
@@ -564,6 +664,8 @@ pub fn range(p: usize) -> (f32, f32, bool) {
         274..280 => (0., 1., p == 279),
         280 => (0., 2., true),
         281..283 => (0.0625, 32., false),
+        283..285 => (0., 1., true),
+        285..292 => (0., 127., true),
         _ => (0., 1., false),
     }
 }
@@ -612,6 +714,13 @@ pub unsafe extern "C" fn lxrp_transport(h: *mut c_void, bpm: f64, beat: f64, run
 #[no_mangle]
 pub unsafe extern "C" fn lxrp_process(h: *mut c_void, out: *mut f32, frames: u32) {
     instrument(h).render(slice::from_raw_parts_mut(out, frames as usize * 2));
+}
+#[no_mangle]
+pub unsafe extern "C" fn lxrp_process_multi(h: *mut c_void, out: *mut f32, frames: u32) {
+    instrument(h).render_multi(slice::from_raw_parts_mut(
+        out,
+        frames as usize * OUTPUT_CHANNELS,
+    ));
 }
 #[no_mangle]
 pub unsafe extern "C" fn lxrp_status(h: *mut c_void, out: *mut f32) {
@@ -675,6 +784,20 @@ pub unsafe extern "C" fn lxrp_info(p: u32, name: *mut c_char, capacity: usize, l
         279 => "Fill".into(),
         280 => "Pattern switch quantize".into(),
         281..283 => format!("Mod LFO {} beats", p - 280),
+        283 => "MIDI mode".into(),
+        284 => "Output routing".into(),
+        285..292 => format!(
+            "{} MIDI note",
+            [
+                "Drum 1",
+                "Drum 2",
+                "Drum 3",
+                "Snare",
+                "Cymbal",
+                "Closed hat",
+                "Open hat"
+            ][p - 285]
+        ),
         _ => String::new(),
     };
     if capacity > 0 {
@@ -698,10 +821,14 @@ pub unsafe extern "C" fn lxrp_meta(h: *mut c_void, name: *const u8, size: usize,
 #[no_mangle]
 pub unsafe extern "C" fn lxrp_inherit(new: *mut c_void, old: *mut c_void) {
     if new != old && !old.is_null() {
+        let compatible = instrument(new).midi_mode == instrument(old).midi_mode
+            && instrument(new).drum_notes == instrument(old).drum_notes;
         instrument(new).inherit_transport(instrument(old));
-        instrument(new)
-            .engine
-            .take_audio(&mut instrument(old).engine);
+        if compatible {
+            instrument(new)
+                .engine
+                .take_audio(&mut instrument(old).engine);
+        }
     }
 }
 
