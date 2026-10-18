@@ -1,0 +1,90 @@
+{
+  "image_sha256": "188695ea78cd3da0fb6a3e825732bd7fd365d4491a37126003ec513e163e1576",
+  "oracle": "Unicorn 2.1.4 ARM MAX (FPv5-DP); original Thumb machine code; FPSCR=0; no DSP instructions replaced",
+  "fixtures": [
+    {
+      "file": "oscillator.bin",
+      "cases": 70,
+      "bytes": 56148,
+      "sha256": "a814eabf14abb93bbf9408fbad1d68eab30fb5e79948acbe08ee0b65ed54be9f"
+    },
+    {
+      "file": "tuning.bin",
+      "cases": 78,
+      "bytes": 788,
+      "sha256": "d23a50b339c5af5e502ec6c73147c9395b840bac5510d874d7d9da853c9356a5"
+    },
+    {
+      "file": "filter.bin",
+      "cases": 24,
+      "bytes": 26240,
+      "sha256": "4ae08ef1783ab14bd7f58a9dc2413c9516895836edb0c9f1a8d1c63ab09e4509"
+    },
+    {
+      "file": "transient.bin",
+      "cases": 42,
+      "bytes": 215930,
+      "sha256": "23944211b97a4424e7170088a7503029b415b6b94fa63ed44551f9c15968cc3b"
+    },
+    {
+      "file": "envelope.bin",
+      "cases": 6,
+      "bytes": 25304,
+      "sha256": "4ac2de41d3b4fde1954cdaa6b41438132b65b927ea7436521521e4d0e35c492d"
+    },
+    {
+      "file": "snappy.bin",
+      "cases": 3,
+      "bytes": 800,
+      "sha256": "3be660b22cb22b4be9675486c5da379d23ed743273aca6d387edbd57ab944d3c"
+    },
+    {
+      "file": "drive.bin",
+      "cases": 9,
+      "bytes": 38249,
+      "sha256": "be9925b0366dc83f36a8415903264cd7fea00b1be82948415ec8e4fa1e4ae1e0"
+    },
+    {
+      "file": "compressor.bin",
+      "cases": 3,
+      "bytes": 12404,
+      "sha256": "73970d49c300d7c2b6b18ba862100fb8014c13dfd85511a7ac188a5975f701fa"
+    },
+    {
+      "file": "ring.bin",
+      "cases": 4,
+      "bytes": 16460,
+      "sha256": "576e234a5624f8182262ac8be34ecce9e30cf80155ad78a492a734637da76de9"
+    },
+    {
+      "file": "shaper.bin",
+      "cases": 4,
+      "bytes": 16488,
+      "sha256": "4bf7ac6cc2f51582cab2c3f9b074db5ada328a1b0cb24182e4e941584b36b651"
+    },
+    {
+      "file": "math.bin",
+      "cases": 8600,
+      "bytes": 103208,
+      "sha256": "330dd4e60bb79293d4a5a6a57fd4611e075568d648b7782e4a68e656db0a5693"
+    },
+    {
+      "file": "delay.bin",
+      "cases": 6,
+      "bytes": 787166,
+      "sha256": "e5ee20d72c6baf379786e5c1b33b4ef277ab13bbea3356766171c968f7b50e5e"
+    },
+    {
+      "file": "drum-voice.bin",
+      "cases": 12,
+      "bytes": 100280,
+      "sha256": "cb544687d1d19bee9b236da4f2381ddf7f1cc13b4abd1496a56aac874f5c438f"
+    },
+    {
+      "file": "percussion-voice.bin",
+      "cases": 12,
+      "bytes": 100292,
+      "sha256": "2f88d9a578eb7532113baf2fe69400bf57c7cae160b080256c23168565e3bd6c"
+    }
+  ]
+}

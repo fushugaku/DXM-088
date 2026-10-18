@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>DXM-088 · control regression check</title>
+<style>body{margin:0;background:#151815;color:#eee;font:14px system-ui}header{height:44px;display:flex;align-items:center;gap:18px;padding:0 20px}button{padding:5px 10px}iframe{width:1280px;height:859px;border:0;display:block}output{font-family:monospace}</style>
+<header><button id="arm">Test delayed host echoes</button><output id="result">Drag Pitch upward after arming the test.</output></header>
+<iframe src="/?pluginPreview=1" title="DXM-088 editor"></iframe>
+<script type="module">
+const frame=document.querySelector('iframe'),output=document.querySelector('output');
+document.querySelector('#arm').onclick=()=>{
+ const win=frame.contentWindow,doc=win.document;
+ output.textContent='Armed: drag Pitch upward.';
+ doc.addEventListener('pointerdown',event=>{
+  const knob=event.target.closest('.knob');if(!knob)return;
+  const before=Number(knob.getAttribute('aria-valuenow'));let echoes=0;
+  const timer=setInterval(()=>{
+   win.dispatchEvent(new win.CustomEvent('lxr-native-parameter',{detail:{id:39,value:100+(echoes++%10),physical:true}}));
+   win.dispatchEvent(new win.CustomEvent('lxr-native-parameter',{detail:{id:0,value:before,physical:true}}));
+  },16);
+  doc.addEventListener('pointerup',()=>{
+   clearInterval(timer);
+   requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    const after=Number(knob.getAttribute('aria-valuenow'));
+    const result={passed:knob.isConnected&&knob===doc.querySelector('.knob')&&after>before&&echoes>0,
+      sameControl:knob.isConnected&&knob===doc.querySelector('.knob'),before,after,echoes,
+      width:doc.documentElement.scrollWidth,viewport:win.innerWidth};
+    output.textContent=JSON.stringify(result);output.dataset.result=JSON.stringify(result);
+   }));
+  },{once:true});
+ },{once:true});
+};
+</script></html>

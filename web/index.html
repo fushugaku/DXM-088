@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#141515">
+  <meta name="description" content="A playable digital drum synthesizer. Six voices, seven tracks, Rust audio engine.">
+  <title>DXM-088 — Drum Synthesizer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='5' fill='%231b1c1c'/%3E%3Cpath d='M8 29V11h5v14h9v4m0-18h10v5l-6 8h6v5H21v-5l6-8h-5' fill='%23eab460'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/plugin-bridge.js"></script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body aria-busy="true">
+<div class="workstation">
+  <header class="masthead">
+    <div class="brand"><span class="brand-word">DXM<span class="brand-slash">-</span>088</span><span class="brand-caption">DIGITAL DRUM<br>SYNTHESIZER</span></div>
+    <div class="file-actions"><button id="project" class="text-button">Session <span class="arrow">↗</span></button><button id="export" class="outline-button"><span aria-hidden="true">↓</span> Export</button></div>
+  </header>
+  <div id="load-error" class="error-banner" role="alert" hidden></div>
+  <section class="transport" aria-label="Transport">
+    <div class="transport-buttons"><button id="play" class="play" aria-label="Play" title="Play / stop · Space"><svg viewBox="0 0 20 20"><path d="M6 3.5 16 10 6 16.5Z" fill="currentColor"/></svg></button><button id="stop" class="stop" aria-label="Stop and reset" title="Stop and reset"><svg viewBox="0 0 20 20"><path d="M5 5h10v10H5z" fill="currentColor"/></svg></button></div>
+    <label class="tempo"><input id="bpm" type="number" min="30" max="300" step="1" value="128" aria-label="Tempo"><span>BPM</span></label>
+    <button id="tap" class="small-button tap" title="Tap tempo">TAP</button>
+    <div class="toolbar-divider"></div>
+    <div class="pattern-control"><span class="micro-label">PATTERN</span><div id="patterns" class="pattern-buttons" role="group" aria-label="Patterns"></div></div>
+    <div class="kit-control"><span class="micro-label">KIT</span><div id="kit-select"></div></div>
+    <button id="audio-status" class="audio-status" title="Enable audio"><i></i><span>Audio off</span></button>
+  </section>
+  <main>
+    <div class="upper-deck">
+      <section class="synth panel" aria-label="Voice editor">
+        <div class="panel-title voice-title"><div class="voice-heading"><span id="voice-number" class="voice-number">01</span><div><h1 id="voice-name">Drum 1</h1><span id="voice-type" class="micro-label">FM PERCUSSION</span></div></div><div class="voice-controls"><button id="previous-voice" class="icon-button" aria-label="Previous voice">←</button><button id="trigger" class="trigger-button">Trigger <kbd>A</kbd></button><button id="next-voice" class="icon-button" aria-label="Next voice">→</button></div></div>
+        <nav id="tabs" class="tabs" aria-label="Synthesis sections"></nav>
+        <div id="knobs" class="knob-grid"></div>
+      </section>
+      <section class="mixer panel" aria-label="Mixer">
+        <div class="panel-title"><h2>CHANNELS</h2><canvas id="scope" width="400" height="70" aria-label="Output waveform"></canvas><span class="scope-label" id="scope-label">OUTPUT</span></div>
+        <div id="channels" class="channels"></div>
+        <div class="master-strip"><label for="master">MASTER</label><input id="master" type="range" min="0" max="1.5" step="0.01" value="0.8"><output id="master-value">−1.9 dB</output><div class="stereo-meter"><i id="meter-l"></i><i id="meter-r"></i></div></div>
+      </section>
+    </div>
+    <section class="sequencer panel" aria-label="Step sequencer">
+      <div class="sequencer-heading"><div class="sequence-title"><h2>SEQUENCER</h2><span id="pattern-label" class="micro-label">A01</span><span class="sequence-dots" aria-hidden="true">● ● ● ●</span></div><div class="sequence-actions"><button id="undo" class="icon-button" aria-label="Undo" title="Undo · ⌘Z" disabled>↶</button><button id="copy-pattern" class="text-button" title="Copy this pattern to the next slot">Copy</button><button id="clear-track" class="text-button" title="Clear selected track">Clear track</button><button id="generate" class="outline-button">Generate <span aria-hidden="true">↗</span></button></div></div>
+      <div class="grid-scroll"><div id="sequence-grid" class="sequence-grid" role="group" aria-label="Pattern steps"></div></div>
+      <div class="sequence-footer"><div class="bar-pages"><span class="micro-label">BAR</span><div id="bars" class="segmented" role="group" aria-label="Edit bar"></div></div><div class="division-control"><span class="micro-label">STEP</span><div id="track-division"></div></div><label class="length-control"><span class="micro-label">LENGTH</span><input id="track-length" type="number" min="1" max="64" value="16" aria-label="Selected track length"><span class="micro-label">STEPS</span></label><label class="hits-control"><span class="micro-label">HITS</span><input id="track-hits" type="number" min="0" max="64" value="4" aria-label="Selected track number of hits"></label><div class="swing-control"><label for="swing" class="micro-label">SWING</label><input id="swing" type="range" min="0" max="0.5" step="0.01" value="0"><output id="swing-value">0%</output></div><button id="step-help" class="micro-label help-button" title="Right-click or long-press a step to edit velocity, probability and parameter locks">STEP EDIT <span>⌥</span></button></div>
+    </section>
+    <section id="performance-panel" class="panel performance-panel" aria-label="Performance and sound"><nav id="feature-tabs" class="tabs feature-tabs" role="tablist" aria-label="Performance sections"></nav><div id="feature-body" class="feature-body" role="tabpanel"></div></section>
+    <section class="fx-panel panel" aria-label="Master effects"><div class="fx-select"><h2>MASTER FX</h2><div id="fx-type"></div></div><div id="fx-controls" class="fx-controls"></div><div class="morph-control"><div><label for="morph">MORPH</label><button id="morph-target" class="micro-label">→ ALLOY</button><output id="morph-value">0%</output></div><input id="morph" type="range" min="0" max="1" step="0.01" value="0"></div></section>
+  </main>
+  <footer class="footnote"><span><span class="status-dot"></span><span id="engine-info">Loading instrument…</span></span><span class="keyboard-hints"><kbd>SPACE</kbd> transport <span class="footer-sep">/</span> <kbd>A S D F G H J</kbd> triggers</span><span class="version">RUST ENGINE <span>0.5 / DSP 1.71</span></span></footer>
+</div>
+<dialog id="step-dialog"><div class="dialog-heading"><div><span class="micro-label">STEP EDITOR</span><h2 id="step-title">Drum 1 · 01</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="step-fields" class="step-fields"></div><h3 class="micro-label lock-title">PARAMETER LOCKS</h3><div id="step-locks"></div><div class="dialog-footer"><button id="step-remove" class="text-button">Remove step</button><button class="outline-button close-dialog">Done</button></div></dialog>
+<dialog id="generator-dialog"><div class="dialog-heading"><div><span class="micro-label">EUCLIDEAN GENERATOR</span><h2 id="generator-title">Drum 1</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="generator-preview" class="generator-preview"></div><div class="generator-fields"><label>HITS<input id="gen-hits" type="number" min="0" max="64" value="5"></label><label>LENGTH<input id="gen-length" type="number" min="1" max="64" value="16"></label><label>ROTATION<input id="gen-rotation" type="number" min="0" max="63" value="0"></label></div><div class="dialog-footer"><span class="secondary" id="generator-summary">5 hits in 16 steps</span><button id="apply-generator" class="primary-button">Apply to track</button></div></dialog>
+<dialog id="session-dialog"><div class="dialog-heading"><div><span class="micro-label">PROJECT MEMORY</span><h2>Session</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><label class="session-name">NAME<input id="session-name" type="text" maxlength="60" value="Session 01" autocomplete="off"></label><p class="secondary">Changes are saved in this browser. Project files include scenes, patterns, sounds and samples.</p><div class="session-actions"><button id="save-project" class="primary-button">↓ Download project</button><button id="import-project" class="outline-button">↑ Open project</button><input id="project-file" type="file" accept=".json,application/json" hidden></div></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body></html>

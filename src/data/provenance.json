@@ -1,0 +1,47 @@
+{
+  "format": "signed int16 little-endian",
+  "source_image_sha256": "188695ea78cd3da0fb6a3e825732bd7fd365d4491a37126003ec513e163e1576",
+  "tables": [
+    {
+      "name": "sine",
+      "runtime_address": "0x20006870",
+      "file": "sine.i16le",
+      "samples_per_band": 4096,
+      "bands": 1,
+      "combined_offset": 0,
+      "bytes": 8192,
+      "sha256": "642d43a48346d978d051879928646374a19eb02589fbd41e69571bb949ab4f00"
+    },
+    {
+      "name": "triangle",
+      "runtime_address": "0x8035360",
+      "file": "triangle.i16le",
+      "samples_per_band": 1024,
+      "bands": 11,
+      "combined_offset": 8192,
+      "bytes": 22528,
+      "sha256": "591e0656f4a961157554ae2220055366487a744e273554d2120fa27001081b01"
+    },
+    {
+      "name": "saw",
+      "runtime_address": "0x802fb60",
+      "file": "saw.i16le",
+      "samples_per_band": 1024,
+      "bands": 11,
+      "combined_offset": 30720,
+      "bytes": 22528,
+      "sha256": "50972e365198c9a768ccad454ad93bfc12e691857bf2c138737f9f54606104c0"
+    },
+    {
+      "name": "square",
+      "runtime_address": "0x802a360",
+      "file": "square.i16le",
+      "samples_per_band": 1024,
+      "bands": 11,
+      "combined_offset": 53248,
+      "bytes": 22528,
+      "sha256": "0e0b93dab16158a1ab7808170cebf4878a80fd8aaef4da8b8810f4d2b112e509"
+    }
+  ],
+  "combined_sha256": "214e0d5fe3995aea0b143aa6f8545efa1e0eace533952f2430fbc681f2c63bf5"
+}

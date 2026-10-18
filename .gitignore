@@ -1,0 +1,14 @@
+/target/
+/artifacts/
+/web/lxr02.wasm
+/.deps/
+/build/
+/plugin/engine/target/
+/plugin/resources/web/
+.DS_Store
+*.user
+*.suo
+.env
+.env.*
+__pycache__/
+*.pyc

@@ -1,0 +1,33 @@
+{
+  "source_image_sha256": "188695ea78cd3da0fb6a3e825732bd7fd365d4491a37126003ec513e163e1576",
+  "tables": [
+    {
+      "file": "transients.i8",
+      "runtime_address": "0x20000000",
+      "bytes": 26460,
+      "sha256": "f120c68fcb1bbc3afaa778f989712078d6a99e474202aaabd75cd34f82ab0c4c",
+      "description": "12 \u00d7 2205 signed 8-bit PCM; types 2\u201313"
+    },
+    {
+      "file": "drive-rom.bin",
+      "runtime_address": "0x20008870",
+      "bytes": 2072,
+      "sha256": "1af02ed8abc07c00325cc88bc1e1f21ae4b649f6a0c28e0fe1a611bac42c9889",
+      "description": "Sine guard; 258 float32 clip values at +8; 129 float64 tube values at +1040"
+    },
+    {
+      "file": "wave-guards.bin",
+      "runtime_address": "0x0",
+      "bytes": 8,
+      "sha256": "390b16451b5cb5e64404a4eb0bc86af3f50faaaa5bf5cfc16b63106a45c16a4d",
+      "description": "Following int16 in firmware memory for sine, triangle, saw, square"
+    },
+    {
+      "file": "math-rom.bin",
+      "runtime_address": "0x803dd50",
+      "bytes": 616,
+      "sha256": "93152f585d9fd86f3f969faae0336a85bc54928c34226a74c6854e9ea0045cb5",
+      "description": "Original expf/logf tables and polynomial constants"
+    }
+  ]
+}

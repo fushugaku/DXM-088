@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {migrateProject,FX_DEFAULTS} from '../web/project-format.js';
+const legacy=JSON.parse(await readFile(new URL('../tests/fixtures/legacy-session.lxr02.json',import.meta.url)));
+legacy.params[0][8]=12;legacy.params[0][34]=9000;
+legacy.patterns[0].tracks[0][0].locks=[[8,4],[34,6000]];
+const before=JSON.stringify(legacy),next=migrateProject(legacy);
+assert.equal(JSON.stringify(legacy),before,'migration mutated original project');
+assert.equal(next.version,3);assert.equal(next.params.length,6);
+assert(next.params.every(p=>p.length===39));assert.equal(next.params[0][8],0.75);assert.equal(next.params[0][34],3);
+assert.deepEqual(next.params[0].slice(36),[0,0.22,4]);assert.deepEqual(next.patterns[0].tracks[0][0].locks,[[8,0.25],[34,2]]);
+assert.equal(next.fx.length,15);assert.deepEqual(next.fx.slice(7),FX_DEFAULTS.slice(7));
+assert.equal(next.name,legacy.name);assert.equal(next.pattern,legacy.pattern);assert.deepEqual(next.levels,legacy.levels);
+assert.deepEqual(migrateProject(next),next,'version 3 should be unchanged');
+console.log('Project v1 → v3: parameter units, locks, FX defaults and original preservation passed.');

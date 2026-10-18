@@ -1,0 +1,19 @@
+[package]
+name = "lxr02"
+version = "0.5.0"
+edition = "2021"
+description = "DXM-088 digital drum synthesizer with Rust DSP, a polyrhythmic sequencer and web editor"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "dxm088"
+path = "src/bin/lxr02.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

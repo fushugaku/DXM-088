@@ -1,0 +1,15 @@
+{
+  "CLAP": {
+    "url": "https://github.com/free-audio/clap-validator.git",
+    "commit": "b2f1d9b79b1d264a5747f46707d72b1aa40a02ef",
+    "version": "0.4.1"
+  },
+  "VST3": {
+    "SDK": "3.8.1",
+    "source": "VST3_SDK in SOURCES.json"
+  },
+  "AU": {
+    "tool": "auval",
+    "version": "1.10.0"
+  }
+}
