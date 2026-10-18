@@ -21,7 +21,7 @@ if webview.is_file():
 wdl=(root/'.deps/iplug2/WDL/heapbuf.h').read_text(encoding='utf-8')
 (notices/'WDL-heapbuf-notice.txt').write_text(wdl.split('*/',1)[0]+'*/\n',encoding='utf-8')
 cargo=subprocess.check_output(['rustup','which','cargo'],text=True).strip()
-metadata=json.loads(subprocess.check_output([cargo,'metadata','--offline','--format-version','1','--manifest-path',str(root/'plugin/engine/Cargo.toml')],text=True))
+metadata=json.loads(subprocess.check_output([cargo,'metadata','--locked','--format-version','1','--manifest-path',str(root/'plugin/engine/Cargo.toml')],text=True))
 for package in metadata['packages']:
  if package.get('source'):
   folder=Path(package['manifest_path']).parent
