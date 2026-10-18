@@ -22,6 +22,12 @@ endif()
 iplug_add_plugin(DXM-088 SOURCES LXR02.cpp LXR02.h engine.h ${LXR_DIALOG} WEB_RESOURCES ${LXR_WEB} UI WEBVIEW FORMATS ${LXR_FORMATS} LINK lxr-rust)
 if(APPLE)
   foreach(format vst3 clap au)
+    # iPlug derives Objective-C symbols from the product name. Hyphens belong
+    # in the displayed name and filenames, but not in Objective-C identifiers.
+    get_target_property(objc_definitions DXM-088-${format} COMPILE_DEFINITIONS)
+    list(FILTER objc_definitions EXCLUDE REGEX "^OBJC_PREFIX=")
+    list(APPEND objc_definitions OBJC_PREFIX=vDXM088)
+    set_property(TARGET DXM-088-${format} PROPERTY COMPILE_DEFINITIONS ${objc_definitions})
     target_link_libraries(DXM-088-${format} PRIVATE "-framework Security" "-framework SystemConfiguration" "-framework CoreFoundation" "-liconv")
   endforeach()
 endif()
