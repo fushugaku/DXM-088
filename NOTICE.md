@@ -10,6 +10,12 @@ transient and lookup data in `src/data/`, and firmware-derived test fixtures in
 repository does not grant additional rights to that third-party material.
 The complete firmware and the local decompilation workspace are not included.
 
+Additional nonlinear filters in `src/rustias_filter.rs` are ported from
+[fushugaku/Rustias](https://github.com/fushugaku/Rustias),
+`crates/radias-synth-infrastructure/src/circuit/filters.rs`, commit
+`40b1a175f8212b829ce8a1386caedcb8102cd3f5`. The port makes the sample rate
+explicit for the DXM-088 DSP clock. These are independent Rustias designs.
+
 The host adapters depend on iPlug2, WDL, Steinberg VST3 SDK, CLAP and CLAP helpers.
 Windows builds also use Microsoft WIL and WebView2. SDK source locations and
 pinned revisions are in `plugin/SOURCES.json`; binary releases include dependency

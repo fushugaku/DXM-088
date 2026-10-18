@@ -1,5 +1,5 @@
 #pragma once
-static constexpr int kDXMParams=292;
+static constexpr int kDXMParams=394;
 static constexpr int kDrumNotes[7]={36,45,47,38,49,42,46};
 static const char* kOutputNames[8]={"Mix","Drum 1","Drum 2","Drum 3","Snare","Cymbal","Closed Hat","Open Hat"};
 static double compareOutput(const float* left,const float* right,const float* expected,int frames,int bus){

@@ -31,11 +31,17 @@ fn midi_transport_and_render_allocate_nothing() {
         i.engine.sample_data(t, 44100., vec![0.2; 1024]);
         i.engine.track_settings(0, t, 9, 0.1, 2, 0.5);
     }
+    for v in 0..6 {
+        i.engine.set_param(v, lxr02::params::FILTER_MODEL, 1.);
+        i.engine.set_param(v, lxr02::params::FILTER2, 11.);
+    }
     for p in 0..128 {
         i.engine.capture_scene(p, true);
     }
     for r in 0..16 {
-        i.engine.set_route(r, (r % 9) as u8, (r % 6) as u8, 12, 0.1);
+        i.engine
+            .set_route(r, (r % 13) as u8, (r % 6) as u8, 12, 0.1);
+        i.engine.set_route_source(r, ((r + 1) % 7) as u8, 0, true);
     }
     let mut replacement = i.copy_project(96000.);
     let mut audio = [0.; 2048];

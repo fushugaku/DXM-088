@@ -36,7 +36,7 @@ private:
   void reset() noexcept override;
   bool notePortsInfo(uint32_t,bool,clap_note_port_info*) const noexcept override;
 #endif
-  static constexpr int kParams=292;
+  static constexpr int kParams=394;
   static constexpr int kChannels=16;
   struct Ready {void* engine;uint64_t revision;};
   struct Command {uint64_t revision;uint32_t op;std::array<double,8> args{};int parameter=-1;float value=0.;};

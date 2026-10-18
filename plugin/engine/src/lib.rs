@@ -7,13 +7,27 @@ use std::{
 };
 
 mod performance;
-pub const PARAMETERS: usize = 292;
+pub const PARAMETERS: usize = 292 + (PARAMS - LEGACY_PARAMS) * VOICES;
+// Existing IDs 0..291 are stable. New per-voice controls are appended.
+pub fn voice_parameter(p: usize) -> Option<(usize, usize)> {
+    if p < 234 {
+        Some((p / LEGACY_PARAMS, p % LEGACY_PARAMS))
+    } else if p >= 292 && p < PARAMETERS {
+        let offset = p - 292;
+        Some((
+            offset / (PARAMS - LEGACY_PARAMS),
+            LEGACY_PARAMS + offset % (PARAMS - LEGACY_PARAMS),
+        ))
+    } else {
+        None
+    }
+}
 pub const DEFAULT_DRUM_NOTES: [u8; 7] = [36, 45, 47, 38, 49, 42, 46];
 const FX_MIN: [f32; 15] = [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.];
 const FX_MAX: [f32; 15] = [
     7., 1., 0.743, 0.94, 1., 1., 1.5, 1., 1., 5., 1., 1., 1., 8., 1.,
 ];
-const NAMES: [&str; 39] = [
+const NAMES: [&str; PARAMS] = [
     "Pitch",
     "Waveform",
     "Decay",
@@ -53,6 +67,23 @@ const NAMES: [&str; 39] = [
     "Filter drive",
     "Pitch slope",
     "FM wave 2",
+    "Filter EG attack",
+    "Filter EG decay",
+    "Filter EG slope",
+    "Filter EG amount",
+    "Assign EG attack",
+    "Assign EG decay",
+    "Assign EG slope",
+    "Filter 2 type",
+    "Filter 2 cutoff",
+    "Filter 2 resonance",
+    "Filter 2 drive",
+    "Filter 2 EG amount",
+    "Filter routing",
+    "Filter balance",
+    "Filter 1 morph",
+    "Filter 2 morph",
+    "Filter 1 model",
 ];
 const FX_NAMES: [&str; 15] = [
     "FX type",
@@ -297,7 +328,11 @@ impl Instrument {
             let tolerance = 2. * self.bpm / (60. * self.engine.sample_rate as f64);
             if !self.host_running || self.expected.is_some_and(|p| (p - beat).abs() > tolerance) {
                 self.last_tick = None;
-                self.engine.seek_clock(beat);
+                if self.host_running && self.sequencer_active() {
+                    self.engine.seek_transport(beat);
+                } else {
+                    self.engine.seek_clock(beat);
+                }
             }
             self.beat = beat;
         }
@@ -355,8 +390,10 @@ impl Instrument {
     }
     pub fn get(&self, p: usize) -> f32 {
         let e = &self.engine;
+        if let Some((voice, param)) = voice_parameter(p) {
+            return e.params[voice][param];
+        }
         match p {
-            0..234 => e.params[p / 39][p % 39],
             234..249 => e.global_fx[p - 234],
             249..256 => e.levels[p - 249],
             256..263 => e.muted[p - 256] as u8 as f32,
@@ -380,8 +417,11 @@ impl Instrument {
         if !v.is_finite() {
             return;
         }
+        if let Some((voice, param)) = voice_parameter(p) {
+            self.engine.set_param(voice, param, v);
+            return;
+        }
         match p {
-            0..234 => self.engine.set_param(p / 39, p % 39, v),
             234..249 => self.engine.set_fx(p - 234, v),
             249..256 => self.engine.set_mix(p - 249, 0, v),
             256..263 => self.engine.set_mix(p - 256, 1, v),
@@ -503,7 +543,7 @@ impl Instrument {
                 let p = u(0);
                 let scene = &mut self.engine.scenes[p];
                 match op {
-                    25 if u(1) < 6 && u(2) < 39 => {
+                    25 if u(1) < 6 && u(2) < PARAMS => {
                         scene.params[u(1)][u(2)] =
                             lxr02::params::constrain(u(2), f(3)).unwrap_or(scene.params[u(1)][u(2)])
                     }
@@ -526,19 +566,23 @@ impl Instrument {
                     _ => {}
                 }
                 if p == self.engine.pattern {
-                    if op == 25 && u(1) < 6 && u(2) < 39 {
+                    if op == 25 && u(1) < 6 && u(2) < PARAMS {
                         self.engine.set_param(u(1), u(2), f(3));
                     } else {
                         self.engine.refresh_scene();
                     }
                 }
             }
+            29 => self.engine.track_swing(u(0), u(1), f(2)),
+            30 => self
+                .engine
+                .set_route_source(u(0), u(1) as u8, u(2) as u8, f(3) >= 0.5),
             _ => {}
         }
     }
     pub fn project(&self) -> Value {
         let e = &self.engine;
-        let patterns:Vec<_>=e.patterns.iter().map(|p|json!({"lengths":p.tracks.map(|t|t.length),"divisions":p.tracks.map(|t|t.division),"delays":p.tracks.map(|t|t.delay),"grooves":p.tracks.map(|t|t.groove),"grooveAmounts":p.tracks.map(|t|t.groove_amount),"tracks":p.tracks.iter().map(|t|t.steps.iter().map(|s|json!({"v":s.velocity,"prob":s.probability,"note":s.note,"ratchet":s.ratchet,"micro":s.micro,"condition":s.condition,"every":s.every,"phase":s.phase,"locks":s.locks.map(|l|json!([l.param,l.value]))})).collect::<Vec<_>>()).collect::<Vec<_>>()})).collect();
+        let patterns:Vec<_>=e.patterns.iter().map(|p|json!({"lengths":p.tracks.map(|t|t.length),"divisions":p.tracks.map(|t|t.division),"delays":p.tracks.map(|t|t.delay),"grooves":p.tracks.map(|t|t.groove),"grooveAmounts":p.tracks.map(|t|t.groove_amount),"swings":p.tracks.map(|t|t.swing),"tracks":p.tracks.iter().map(|t|t.steps.iter().map(|s|json!({"v":s.velocity,"prob":s.probability,"note":s.note,"ratchet":s.ratchet,"micro":s.micro,"condition":s.condition,"every":s.every,"phase":s.phase,"locks":s.locks.map(|l|json!([l.param,l.value]))})).collect::<Vec<_>>()).collect::<Vec<_>>()})).collect();
         let mut j = json!({"format":"lxr02-web","version":4,"name":self.name,"kit":self.kit,"bpm":e.bpm,"swing":e.swing,"pattern":e.pattern,"params":e.params.map(|p|p.to_vec()),"patterns":patterns,"levels":e.levels,"muted":e.muted,"solo":e.solo,"fx":(234..249).map(|p|self.get(p)).collect::<Vec<_>>(),"morph":e.global_morph[0],"morphTarget":e.global_morph[1],"plugin":{"version":2,"baseNote":self.base_note,"nativeFileDrag":cfg!(target_os="macos")}});
         j["plugin"] = json!({"version":3,"baseNote":self.base_note,"midiMode":self.midi_mode,"outputMode":self.output_mode,"drumNotes":self.drum_notes,"nativeFileDrag":cfg!(target_os="macos")});
         j["kitPreset"] = self.kit_preset.clone().unwrap_or(Value::Null);
@@ -569,10 +613,11 @@ impl Instrument {
             return None;
         }
         for v in 0..6 {
-            if j["params"][v].as_array()?.len() != 39 {
+            let size = j["params"][v].as_array()?.len();
+            if size != LEGACY_PARAMS && size != PARAMS {
                 return None;
             }
-            for p in 0..39 {
+            for p in 0..size {
                 n.engine
                     .set_param(v, p, num(&j["params"][v][p], MIN[p] as f64, MAX[p] as f64)?);
             }
@@ -700,8 +745,10 @@ fn kit_preset(value: &Value) -> Option<Value> {
     Some(json!({"id":id,"name":name.chars().take(60).collect::<String>()}))
 }
 pub fn range(p: usize) -> (f32, f32, bool) {
+    if let Some((_, id)) = voice_parameter(p) {
+        return (MIN[id], MAX[id], DISCRETE.contains(&id));
+    }
     match p {
-        0..234 => (MIN[p % 39], MAX[p % 39], DISCRETE.contains(&(p % 39))),
         234..249 => (
             FX_MIN[p - 234],
             FX_MAX[p - 234],
@@ -821,40 +868,43 @@ pub unsafe extern "C" fn lxrp_info(p: u32, name: *mut c_char, capacity: usize, l
     let (min, max, discrete) = range(p);
     let bounds = slice::from_raw_parts_mut(limits, 3);
     bounds.copy_from_slice(&[min, max, discrete as u8 as f32]);
-    let label = match p {
-        0..234 => format!(
+    let label = if let Some((v, id)) = voice_parameter(p) {
+        format!(
             "{} {}",
-            ["Drum 1", "Drum 2", "Drum 3", "Snare", "Cymbal", "Hi hats"][p / 39],
-            NAMES[p % 39]
-        ),
-        234..249 => FX_NAMES[p - 234].into(),
-        249..256 => format!("Track {} level", p - 248),
-        256..263 => format!("Track {} mute", p - 255),
-        263..270 => format!("Track {} solo", p - 262),
-        270 => "Swing".into(),
-        271 => "Morph".into(),
-        272 => "Morph target".into(),
-        273 => "A01 MIDI note".into(),
-        274..278 => format!("Macro {}", p - 273),
-        278 => "Velocity influence".into(),
-        279 => "Fill".into(),
-        280 => "Pattern switch quantize".into(),
-        281..283 => format!("Mod LFO {} beats", p - 280),
-        283 => "MIDI mode".into(),
-        284 => "Output routing".into(),
-        285..292 => format!(
-            "{} MIDI note",
-            [
-                "Drum 1",
-                "Drum 2",
-                "Drum 3",
-                "Snare",
-                "Cymbal",
-                "Closed hat",
-                "Open hat"
-            ][p - 285]
-        ),
-        _ => String::new(),
+            ["Drum 1", "Drum 2", "Drum 3", "Snare", "Cymbal", "Hi hats"][v],
+            NAMES[id]
+        )
+    } else {
+        match p {
+            234..249 => FX_NAMES[p - 234].into(),
+            249..256 => format!("Track {} level", p - 248),
+            256..263 => format!("Track {} mute", p - 255),
+            263..270 => format!("Track {} solo", p - 262),
+            270 => "Swing".into(),
+            271 => "Morph".into(),
+            272 => "Morph target".into(),
+            273 => "A01 MIDI note".into(),
+            274..278 => format!("Macro {}", p - 273),
+            278 => "Velocity influence".into(),
+            279 => "Fill".into(),
+            280 => "Pattern switch quantize".into(),
+            281..283 => format!("Mod LFO {} beats", p - 280),
+            283 => "MIDI mode".into(),
+            284 => "Output routing".into(),
+            285..292 => format!(
+                "{} MIDI note",
+                [
+                    "Drum 1",
+                    "Drum 2",
+                    "Drum 3",
+                    "Snare",
+                    "Cymbal",
+                    "Closed hat",
+                    "Open hat"
+                ][p - 285]
+            ),
+            _ => String::new(),
+        }
     };
     if capacity > 0 {
         let bytes = slice::from_raw_parts_mut(name.cast::<u8>(), capacity);
@@ -910,8 +960,10 @@ pub unsafe extern "C" fn lxrp_labels(h: *mut c_void, data: *const u8, size: usiz
         if let Some(depth) = j["mutation"]["depth"].as_f64() {
             if (0. ..=1.).contains(&depth) {
                 if let Some(locked) = j["mutation"]["locked"].as_array() {
-                    if locked.len() <= 39
-                        && locked.iter().all(|n| n.as_u64().is_some_and(|n| n < 39))
+                    if locked.len() <= PARAMS
+                        && locked
+                            .iter()
+                            .all(|n| n.as_u64().is_some_and(|n| n < PARAMS as u64))
                     {
                         i.mutation = j["mutation"].clone();
                     }

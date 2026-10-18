@@ -14,17 +14,19 @@ a shared browser / plug-in editor.
 ## Instrument
 
 - Six synth voices and seven tracks, with closed/open hi-hat choke.
-- FM, waveform oscillators, filters, transient generators, drive and master FX.
+- FM, waveform oscillators, transient generators, drive and master FX.
+- Three hit-triggered envelopes: Amp, Filter and Assignable.
+- Two filters in serial or parallel: original LXR modes plus 17 Rustias filter models.
 - 128 patterns in sixteen banks A–P; each track has its own step division, 1–64 step length and hit count.
-- Straight, triplet and dotted divisions; microtiming, groove, swing and ratchets.
+- Straight, triplet and dotted divisions; microtiming, groove, global and per-track swing, and ratchets.
 - Per-step probability, eight trigger conditions, Fill and two parameter locks.
-- A sound/mix scene for every pattern, four macros, a 16-route modulation matrix and two tempo LFOs.
+- A sound/mix scene for every pattern, four macros, eight visible modulation slots with independent source/destination voices and two tempo LFOs.
 - MIDI velocity, aftertouch and mod wheel; optional WAV layers on every track.
 - Euclidean generation, protected sound mutation, undo and project autosave.
 - WAV, MIDI and seven-stem ZIP export. macOS also supports native export drag into a DAW.
 - Pattern-gate or direct drum MIDI modes, with seven configurable drum notes.
 - Main stereo mix or seven individual stereo drum outputs in VST3, AU and CLAP.
-- 292 host automation parameters and a local WebView editor with no server dependency.
+- 394 host automation parameters (the original 292 IDs and ranges are preserved) and a local WebView editor with no server dependency.
 - Save and update personal kits in the shared AU / VST3 / CLAP kit library, including sound, mix, FX and WAV layers.
 
 **Save kit** stores a named kit directly in **KIT → My kits**. **Update kit** replaces
@@ -32,6 +34,24 @@ that saved kit; **Save as new** creates another. The native library is shared ac
 instances and formats in `~/Library/Application Support/DXM-088/Kits` on macOS or
 `%APPDATA%\DXM-088\Kits` on Windows. DAW projects embed their sound and samples,
 so they also open on machines without the saved kit library. Browser kits use IndexedDB.
+
+**ENV** selects Amp / Filter / Assignable. **FILTER** selects Filter 1 / Filter 2 / Drive.
+Filter 1 keeps its original **LXR type** when Model is LXR; the Model control adds
+Rustias Ladder, Diode, K35, SEM, Morph and SVF families. Filter 2 has its own type,
+cutoff, resonance, drive and envelope depth. Serial chains both filters; Parallel
+blends their outputs using Filter balance. The added models default to bypass.
+
+**Timing → Track swing** adds 0–50% to global swing, capped at 50% of a step.
+It is stored with each track rhythm. **Matrix** exposes eight ready-to-edit slots.
+Choose a macro, MIDI source, LFO, envelope or Voice parameter; voice-based sources
+have independent From voice / Source parameter controls. To voice and Destination
+select the recipient, defaulting to the current voice. Modulation changes the live
+sound without overwriting saved controls. Closed/Open Hat share one synthesis
+voice; their envelope sources follow the last triggered hat. Active legacy routes
+9–16 remain available when loading older projects.
+
+Held patterns do not replay the first hit when DAW PPQ wraps partway through an
+audio block. In-flight ratchets survive the wrap; a new note keeps normal startup.
 
 In Patterns mode, edits made while holding a MIDI note remain in its pattern.
 Each note retains its own rhythm: steps, track lengths, divisions, timing and locks.

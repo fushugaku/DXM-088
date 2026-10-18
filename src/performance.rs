@@ -18,12 +18,28 @@ pub const DIVISIONS: [f64; 13] = [
     0.375,
 ];
 pub const ROUTES: usize = 16;
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub struct Route {
     pub source: u8,
     pub voice: u8,
     pub param: u8,
     pub amount: f32,
+    pub source_voice: u8,
+    pub source_param: u8,
+    pub configured: bool,
+}
+impl Default for Route {
+    fn default() -> Self {
+        Self {
+            source: 0,
+            voice: 0,
+            param: 12,
+            amount: 0.,
+            source_voice: 0,
+            source_param: 12,
+            configured: false,
+        }
+    }
 }
 #[derive(Clone, Copy)]
 pub struct Scene {
@@ -178,7 +194,11 @@ pub fn event_beat(track: &crate::sequencer::Track, index: i64, swing: f32) -> f6
     let offset = (step.micro
         + track.delay
         + groove * track.groove_amount
-        + if index.rem_euclid(2) == 1 { swing } else { 0. })
+        + if index.rem_euclid(2) == 1 {
+            (swing + track.swing).clamp(0., 0.5)
+        } else {
+            0.
+        })
     .clamp(-0.49, 0.5);
     index as f64 * unit + offset as f64 * unit
 }

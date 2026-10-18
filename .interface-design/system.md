@@ -82,3 +82,12 @@ the transport width below the pattern buttons, with 44px controls. Keep rhythms
 and MIDI routing outside kit presets. MIDI pattern edits retain only the rhythm
 and timing of the note-selected slot through save/reopen; sound, mix and FX stay
 shared. Sound scenes are created only through the explicit Scenes controls.
+
+Synthesis extension (0.9): ENV has Amp / Filter / Assignable sub-tabs; FILTER has
+Filter 1 / Filter 2 / Drive. Use the existing segmented controls, equal heights
+and the knob grid. Enum values open the common bounded dropdown without losing
+relative knob drag. Timing adds Track swing beside Groove / Shift. The matrix
+shows eight slots immediately, numbered 01–08, with separate source and target
+voices. Per-voice sources reveal From voice and Source parameter below the slot.
+On phones the source/target controls form two aligned columns, with details
+stacking within their row. Source and target default to the selected instrument.

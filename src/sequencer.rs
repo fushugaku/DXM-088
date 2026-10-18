@@ -50,6 +50,7 @@ pub struct Track {
     pub delay: f32,
     pub groove: u8,
     pub groove_amount: f32,
+    pub swing: f32,
 }
 impl Default for Track {
     fn default() -> Self {
@@ -60,6 +61,7 @@ impl Default for Track {
             delay: 0.,
             groove: 0,
             groove_amount: 0.,
+            swing: 0.,
         }
     }
 }

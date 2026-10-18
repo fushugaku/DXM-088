@@ -459,7 +459,7 @@ fn complete_drum_voice_matches_original_control_and_audio_pipeline() {
         let n = r.u32() as usize;
         let expected = r.pcm(n);
         let mut voice = Voice::new(0);
-        voice.p = p;
+        voice.p[..39].copy_from_slice(&p);
         voice.trigger(0, velocity, 0, RATE);
         let actual: Vec<i16> = (0..n)
             .map(|_| (voice.tick(0, RATE, &sine) * 32768.) as i16)
@@ -487,7 +487,7 @@ fn complete_snare_cymbal_and_hat_voices_match_original_pipeline() {
         let n = r.u32() as usize;
         let expected = r.pcm(n);
         let mut voice = Voice::new(index);
-        voice.p = p;
+        voice.p[..39].copy_from_slice(&p);
         voice.trigger(index, velocity, 0, RATE);
         let actual: Vec<i16> = (0..n)
             .map(|_| (voice.tick(index, RATE, &sine) * 32768.) as i16)

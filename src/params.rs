@@ -1,7 +1,11 @@
 //! Parameter units belong to the web instrument, not the firmware's MIDI CC scale.
 pub const VOICES: usize = 6;
 pub const TRACKS: usize = 7;
-pub const PARAMS: usize = 39;
+pub const LEGACY_PARAMS: usize = 39;
+pub const PARAMS: usize = 56;
+pub const EXTRA_DEFAULTS: [f32; PARAMS - LEGACY_PARAMS] = [
+    0., 0.2, 0.27, 0., 0., 0.3, 0.27, 0., 16000., 0.1, 0., 0., 0., 0.5, 0.5, 0.5, 0.,
+];
 pub const PITCH: usize = 0;
 pub const WAVE: usize = 1;
 pub const DECAY: usize = 2;
@@ -41,17 +45,35 @@ pub const NOISE_FREQ: usize = 35;
 pub const FILTER_DRIVE: usize = 36;
 pub const PITCH_SLOPE: usize = 37;
 pub const FM_WAVE2: usize = 38;
+pub const FILTER_ENV_ATTACK: usize = 39;
+pub const FILTER_ENV_DECAY: usize = 40;
+pub const FILTER_ENV_SLOPE: usize = 41;
+pub const FILTER_ENV_AMOUNT: usize = 42;
+pub const ASSIGN_ENV_ATTACK: usize = 43;
+pub const ASSIGN_ENV_DECAY: usize = 44;
+pub const ASSIGN_ENV_SLOPE: usize = 45;
+pub const FILTER2: usize = 46;
+pub const CUTOFF2: usize = 47;
+pub const RESONANCE2: usize = 48;
+pub const FILTER_DRIVE2: usize = 49;
+pub const FILTER_ENV_AMOUNT2: usize = 50;
+pub const FILTER_ROUTING: usize = 51;
+pub const FILTER_BALANCE: usize = 52;
+pub const FILTER_MORPH: usize = 53;
+pub const FILTER_MORPH2: usize = 54;
+pub const FILTER_MODEL: usize = 55;
 
 pub const MIN: [f32; PARAMS] = [
     20., 0., 0.005, 0., 0.005, -36., 0.005, 0.125, 0., 0., 0., 0., 20., 0., 0., 0., 0., 0., -1.,
     0., 0.01, 0., 0., 0., 0.125, 0., 0.05, 0., 0., 0.01, 0., -1., 0., 0., 0.25, 100., 0., 0.005,
-    0.,
+    0., 0., 0.005, 0.005, -96., 0., 0.005, 0.005, 0., 20., 0., 0., -96., 0., 0., 0., 0., 0.,
 ];
 pub const MAX: [f32; PARAMS] = [
     8000., 5., 4., 1., 0.995, 72., 2., 16., 1., 5., 1., 1., 20000., 1., 7., 1., 3., 1., 1., 1.25,
-    40., 1., 3., 4., 16., 1., 0.95, 13., 8., 4., 4., 1., 1., 1., 4., 20000., 1., 0.995, 5.,
+    40., 1., 3., 4., 16., 1., 0.95, 13., 8., 4., 4., 1., 1., 1., 4., 20000., 1., 0.995, 5., 2.,
+    10., 0.995, 96., 2., 10., 0.995, 24., 20000., 1., 1., 96., 1., 1., 1., 1., 17.,
 ];
-pub const DISCRETE: [usize; 12] = [
+pub const DISCRETE: [usize; 15] = [
     WAVE,
     FM_WAVE,
     FILTER,
@@ -64,6 +86,9 @@ pub const DISCRETE: [usize; 12] = [
     FM_MODE,
     LFO_RETRIGGER,
     FM_WAVE2,
+    FILTER2,
+    FILTER_ROUTING,
+    FILTER_MODEL,
 ];
 
 pub fn constrain(id: usize, value: f32) -> Option<f32> {
@@ -77,11 +102,13 @@ pub fn constrain(id: usize, value: f32) -> Option<f32> {
 pub fn kit(index: usize) -> [[f32; PARAMS]; VOICES] {
     let mut p = [[0.0_f32; PARAMS]; VOICES];
     for (v, a) in p.iter_mut().enumerate() {
-        *a = [
+        let legacy = [
             90., 0., 0.3, 0., 0.27, 0., 0.06, 2., 0., 0., 0., 0.12, 16000., 0.1, 1., 0.12, 1., 0.,
             0., 0.8, 1., 0., 1., 0., 3.41, 0.6, 0.5, 0., 0., 0.55, 0., 0., 0., 1., 1., 10000., 0.,
             0.22, 4.,
         ];
+        a[..LEGACY_PARAMS].copy_from_slice(&legacy);
+        a[LEGACY_PARAMS..].copy_from_slice(&EXTRA_DEFAULTS);
         a[PITCH] = [49., 135., 240., 178., 320., 690.][v];
         a[DECAY] = [0.48, 0.24, 0.18, 0.19, 0.16, 0.055][v];
         a[LEVEL] = [1., 0.62, 0.55, 0.68, 0.57, 0.44][v];

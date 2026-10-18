@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
+import './verify-expanded.mjs';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {migrateProject} from '../web/project-format.js';
 import {featureCommands,validateFeatures,uploadSamples,pcmToBase64,pcmFromBase64,divisions} from '../web/feature-state.js';

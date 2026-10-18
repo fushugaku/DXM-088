@@ -3,15 +3,15 @@ import {divisions,conditionNames,sourceNames,grooveNames,effective,captureScene,
 import {readWav,renderPattern,wavBytes,midiBytes,zipBytes} from './export-engine.js';
 import {defs,tracks,normalize,denormalize,format} from './parameters.js';
 export function createPerformanceUI(h){
- const {el,selectWidget,sliderField}=h,$=s=>document.querySelector(s);let tab='Timing',ready=null,busy=false,mutationBase=null,extraRoutes=new Set();
+ const {el,selectWidget,sliderField}=h,$=s=>document.querySelector(s);let tab='Timing',ready=null,busy=false,mutationBase=null;
  const state=()=>h.state(),track=()=>h.track(),buttons=(labels,onClick)=>labels.map(([label,cls],i)=>{const b=el('button',cls||'outline-button',label);b.type='button';b.onclick=()=>onClick(i);return b;});
  const field=(label,node)=>{const r=el('div','feature-field');r.append(el('span','micro-label',label),node);return r;};
  function select(label,options,value,change){const root=el('div');selectWidget(root,options.map((x,i)=>typeof x==='string'?{label:x,value:i}:x),value,change,label);return field(label,root);}
  function edit(fn){h.remember();fn();h.save();}
- function syncTrack(){const s=state(),p=s.patterns[s.pattern],t=track();h.command('lxr_track_settings',s.pattern,t,p.divisions[t],p.delays[t],p.grooves[t],p.grooveAmounts[t]);h.save();}
+ function syncTrack(){const s=state(),p=s.patterns[s.pattern],t=track();h.command('lxr_track_settings',s.pattern,t,p.divisions[t],p.delays[t],p.grooves[t],p.grooveAmounts[t]);h.command('lxr_track_swing',s.pattern,t,p.swings[t]);h.save();}
  function timing(body){
   const s=state(),p=s.patterns[s.pattern],t=track(),grid=el('div','feature-grid timing-fields');
-  grid.append(select('Groove',grooveNames,p.grooves[t],v=>edit(()=>{p.grooves[t]=v;syncTrack();render();})),sliderField('Groove amount',p.grooveAmounts[t]*100,0,100,1,v=>{p.grooveAmounts[t]=v/100;syncTrack();},v=>`${Math.round(v)}%`),sliderField('Track shift',p.delays[t]*100,-49,49,1,v=>{p.delays[t]=v/100;syncTrack();},v=>`${v>0?'+':''}${Math.abs(v)>0&&Math.abs(v)<10?v.toFixed(1):Math.round(v)}%`));
+  grid.append(sliderField('Track swing',p.swings[t]*100,0,50,.1,v=>{p.swings[t]=v/100;syncTrack();},v=>`${Number(v.toFixed(1))}%`),select('Groove',grooveNames,p.grooves[t],v=>edit(()=>{p.grooves[t]=v;syncTrack();render();})),sliderField('Groove amount',p.grooveAmounts[t]*100,0,100,1,v=>{p.grooveAmounts[t]=v/100;syncTrack();},v=>`${Math.round(v)}%`),sliderField('Track shift',p.delays[t]*100,-49,49,1,v=>{p.delays[t]=v/100;syncTrack();},v=>`${v>0?'+':''}${Math.abs(v)>0&&Math.abs(v)<10?v.toFixed(1):Math.round(v)}%`));
   grid.querySelector('[aria-label="Groove amount"]').disabled=p.grooves[t]===0;
   const summary=el('div','timing-summary'),beats=p.lengths[t]*divisions[p.divisions[t]][1],hits=p.tracks[t].slice(0,p.lengths[t]).filter(a=>a.v>0).length;
   summary.append(el('span','',tracks[t]),el('span','micro-label',`${p.lengths[t]} × ${divisions[p.divisions[t]][0]} · ${hits} hits · ${Number((beats/4).toFixed(3))} ${beats===4?'bar':'bars'}`));body.append(summary,grid);
@@ -34,17 +34,31 @@ export function createPerformanceUI(h){
   body.append(list,actions);
  }
  function matrix(body){
-  const s=state(),list=el('div','mod-list'),active=s.performance.routes.map((r,i)=>[r,i]).filter(([r,i])=>r.amount!==0||extraRoutes.has(i));
-  for(const [r,i] of active){
-   const row=el('div','mod-row');const update=()=>{h.command('lxr_route',i,r.source,r.voice,r.param,r.amount);h.save();};
-   row.append(select(`Source ${i+1}`,sourceNames.map((x,k)=>({value:k,label:k<4?s.performance.macroNames[k]:x})),r.source,v=>edit(()=>{r.source=v;update();})),select(`Voice ${i+1}`,tracks.slice(0,6).map((label,value)=>({label,value})),r.voice,v=>edit(()=>{r.voice=v;update();})),select(`Destination ${i+1}`,defs.map(d=>({label:d.name,value:d.id})),r.param,v=>edit(()=>{r.param=v;update();})),sliderField('Depth',r.amount*100,-100,100,.1,v=>{r.amount=v/100;update();},v=>`${v>0?'+':''}${Math.abs(v)>0&&Math.abs(v)<10?v.toFixed(1):Math.round(v)}%`));
-   const remove=el('button','icon-button','×');remove.setAttribute('aria-label',`Remove route ${i+1}`);remove.onclick=()=>edit(()=>{r.amount=0;extraRoutes.delete(i);update();render();});row.append(remove);list.append(row);
+  const s=state(),list=el('div','mod-list');
+  const slots=s.performance.routes.map((r,i)=>[r,i]).filter(([r,i])=>i<8||r.amount!==0);
+  for(const [r,i] of slots){
+   const currentVoice=Math.min(track(),5),target=r.configured?r.voice:currentVoice,sourceVoice=r.configured?r.sourceVoice:track();
+   const row=el('div',`mod-row${r.amount===0?' inactive-route':''}`);row.dataset.slot=i;
+   const initialize=()=>{if(!r.configured){r.voice=target;r.sourceVoice=sourceVoice;r.configured=true;}};
+   const update=()=>{initialize();h.command('lxr_route',i,r.source,r.voice,r.param,r.amount);h.command('lxr_route_source',i,r.sourceVoice,r.sourceParam,1);row.classList.toggle('inactive-route',r.amount===0);h.save();};
+   const source=select(`Source ${i+1}`,sourceNames.map((x,k)=>({value:k,label:k<4?s.performance.macroNames[k]:x})),r.source,v=>edit(()=>{r.source=v;update();render();}));
+   const targetNames=[...tracks.slice(0,5),'Hi hats'];
+   row.append(el('span','mod-slot',String(i+1).padStart(2,'0')),source,
+    select(`To voice ${i+1}`,targetNames.map((label,value)=>({label,value})),target,v=>edit(()=>{initialize();r.voice=v;update();})),
+    select(`Destination ${i+1}`,defs.map(d=>({label:d.name,value:d.id})),r.param,v=>edit(()=>{r.param=v;update();})),
+    sliderField(`Depth ${i+1}`,r.amount*100,-100,100,.1,v=>{r.amount=v/100;update();},v=>`${v>0?'+':''}${Number(v.toFixed(1))}%`));
+   const clear=el('button','icon-button','×');clear.setAttribute('aria-label',`Clear slot ${i+1}`);clear.onclick=()=>edit(()=>{r.amount=0;update();render();});row.append(clear);
+   if(r.source>=9){
+    const details=el('div','mod-source-details');details.append(select(`From voice ${i+1}`,tracks.map((label,value)=>({label,value})),sourceVoice,v=>edit(()=>{initialize();r.sourceVoice=v;update();})));
+    if(r.source===12)details.append(select(`Source parameter ${i+1}`,defs.map(d=>({label:d.name,value:d.id})),r.sourceParam,v=>edit(()=>{r.sourceParam=v;update();})));
+    row.append(details);
+   }
+   list.append(row);
   }
-  const add=el('button','outline-button','+ Modulation route');add.disabled=active.length===16;add.onclick=()=>{const i=s.performance.routes.findIndex((r,i)=>r.amount===0&&!extraRoutes.has(i));if(i>=0){extraRoutes.add(i);render();}};
   const lfos=el('div','lfo-controls');for(let i=0;i<2;i++)lfos.append(select(`LFO ${i+1} cycle`,[.125,.25,.5,1,2,4,8,16,32].map(v=>({value:v,label:`${v} beats`})),s.performance.lfoPeriods[i],v=>edit(()=>{s.performance.lfoPeriods[i]=v;h.command('lxr_performance',5+i,v);h.save();})));
-  if(!active.length)list.append(el('p','secondary','Route macros, MIDI expression or tempo LFOs to voice parameters.'));
-  body.append(list,el('div','feature-actions'));body.lastElementChild.append(add,lfos);
+  body.append(list,lfos);
  }
+
  function sample(body){
   const s=state(),t=track(),a=s.samples[t],header=el('div','sample-heading'),name=el('span','sample-name',a?.name||`${tracks[t]} · No sample`),file=el('input');file.type='file';file.accept='.wav,audio/wav,audio/x-wav';file.hidden=true;
   const load=el('button','outline-button','Load WAV');load.onclick=()=>file.click();file.onchange=async()=>{const f=file.files[0];if(!f)return;try{if(f.size>16_000_000)throw new Error('WAV file is too large.');const decoded=readWav(await f.arrayBuffer());edit(()=>{s.samples[t]={name:f.name,rate:decoded.rate,data:pcmToBase64(decoded.pcm),gain:.7,tune:0,start:0,end:1,decay:4,replace:false};h.syncSamples();h.publish();render();});}catch(e){h.report(e);}};

@@ -1,8 +1,8 @@
 // Legacy IDs, bundle identity and class names keep existing DAW projects compatible.
 #define PLUG_NAME "DXM-088"
 #define PLUG_MFR "fushugaku"
-#define PLUG_VERSION_HEX 0x00000801
-#define PLUG_VERSION_STR "0.8.1"
+#define PLUG_VERSION_HEX 0x00000900
+#define PLUG_VERSION_STR "0.9.0"
 #define PLUG_UNIQUE_ID 'LxR2'
 #define PLUG_MFR_ID 'ErRs'
 #define PLUG_URL_STR "https://github.com/fushugaku/DXM-088"

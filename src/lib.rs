@@ -5,6 +5,7 @@ pub mod firmware;
 pub mod params;
 pub mod performance;
 mod resampler;
+pub mod rustias_filter;
 pub mod sequencer;
 
 use dsp::{Effects, Rng, Sine, Voice};
@@ -57,6 +58,7 @@ pub struct Engine {
     pub switch_quant: u8,
     beat: f64,
     clock_valid: bool,
+    catch_up_clock: bool,
     clocks: [TrackClock; TRACKS],
     pending_switch: Option<(usize, f64)>,
     mod_counter: u32,
@@ -125,6 +127,7 @@ impl Engine {
             switch_quant: 0,
             beat: 0.,
             clock_valid: false,
+            catch_up_clock: true,
             clocks: [TrackClock::default(); TRACKS],
             pending_switch: None,
             mod_counter: 0,
@@ -182,6 +185,27 @@ impl Engine {
                         7 | 8 => (self.beat as f32 * std::f32::consts::TAU
                             / self.lfo_periods[(route.source - 7) as usize].max(0.0625))
                         .sin(),
+                        9..=11 => {
+                            let source = &self.voices[(route.source_voice as usize).min(5)];
+                            if route.source_voice >= 5
+                                && source.active_track != route.source_voice as usize
+                            {
+                                0.
+                            } else {
+                                source.envelope_levels()[(route.source - 9) as usize]
+                            }
+                        }
+                        12 => {
+                            // Read saved controls, never an earlier route's temporary output.
+                            let voice = (route.source_voice as usize).min(5);
+                            let id = route.source_param as usize;
+                            let value = if scene.enabled {
+                                scene.params[voice][id]
+                            } else {
+                                self.params[voice][id]
+                            };
+                            normalized_parameter(id, value)
+                        }
                         _ => 0.,
                     };
                     let id = route.param as usize;
@@ -257,6 +281,7 @@ impl Engine {
         self.playing = false;
         self.beat = 0.;
         self.clock_valid = false;
+        self.catch_up_clock = true;
         self.pending_switch = None;
         self.queued_pattern = None;
         self.tick_count = 0;
@@ -411,6 +436,7 @@ impl Engine {
             self.queued_pattern = None;
             self.pending_switch = None;
             self.clock_valid = false;
+            self.catch_up_clock = true;
             self.ratchets = [Ratchet::default(); TRACKS];
             self.locks = [[Lock::default(); 2]; VOICES];
             self.refresh_scene();
@@ -699,9 +725,21 @@ impl Engine {
             step.phase = phase % step.every;
         }
     }
+    pub fn track_swing(&mut self, p: usize, t: usize, amount: f32) {
+        if p < PATTERNS && t < TRACKS && amount.is_finite() {
+            self.patterns[p].tracks[t].swing = amount.clamp(0., 0.5);
+            if self.clock_valid && p == self.pattern {
+                self.clocks[t].due = event_beat(
+                    &self.patterns[p].tracks[t],
+                    self.clocks[t].index,
+                    self.swing,
+                );
+            }
+        }
+    }
     pub fn set_route(&mut self, index: usize, source: u8, voice: u8, param: u8, amount: f32) {
         if index < ROUTES
-            && source < 9
+            && source < 13
             && voice < 6
             && (param as usize) < PARAMS
             && amount.is_finite()
@@ -711,7 +749,16 @@ impl Engine {
                 voice,
                 param,
                 amount: amount.clamp(-1., 1.),
+                ..self.routes[index]
             };
+            self.refresh();
+        }
+    }
+    pub fn set_route_source(&mut self, index: usize, voice: u8, param: u8, configured: bool) {
+        if index < ROUTES && voice < 7 && (param as usize) < PARAMS {
+            self.routes[index].source_voice = voice;
+            self.routes[index].source_param = param;
+            self.routes[index].configured = configured;
             self.refresh();
         }
     }
@@ -784,6 +831,7 @@ impl Engine {
     pub fn inherit_clock(&mut self, old: &Self) {
         self.beat = old.beat;
         self.clock_valid = old.clock_valid;
+        self.catch_up_clock = old.catch_up_clock;
         self.clocks = old.clocks;
         self.ratchets = old.ratchets;
         self.frame_count = old.frame_count;
@@ -804,11 +852,24 @@ impl Engine {
     pub fn seek_clock(&mut self, beat: f64) {
         self.beat = beat;
         self.clock_valid = false;
+        self.catch_up_clock = true;
         self.ratchets = [Ratchet::default(); TRACKS];
+    }
+    /// A held pattern has already rendered the part of a host block past the
+    /// loop boundary. Do not replay overdue steps when PPQ wraps next block.
+    /// Ratchet countdowns use sample time and remain valid across that wrap.
+    pub fn seek_transport(&mut self, beat: f64) {
+        self.beat = beat;
+        self.clock_valid = false;
+        self.catch_up_clock = false;
     }
     pub fn render_at(&mut self, frames: usize, beat: f64, bpm: f64, gate: bool) -> &[f32] {
         if (self.beat - beat).abs() > 2. * bpm / (60. * self.sample_rate as f64) {
-            self.seek_clock(beat);
+            if gate && self.playing {
+                self.seek_transport(beat);
+            } else {
+                self.seek_clock(beat);
+            }
         }
         self.beat = beat;
         self.bpm = bpm as f32;
@@ -825,11 +886,16 @@ impl Engine {
             if event_beat(tr, k + 1, self.swing) <= self.beat + 1e-10 {
                 k += 1;
             }
+            let previous = !self.catch_up_clock && self.clocks[t].previous;
+            if !self.catch_up_clock && event_beat(tr, k, self.swing) < self.beat - 1e-10 {
+                self.positions[t] = k.rem_euclid(tr.length as i64) as i32;
+                k += 1;
+            }
             let due = event_beat(tr, k, self.swing).max(self.beat);
             self.clocks[t] = TrackClock {
                 index: k,
                 due,
-                previous: false,
+                previous,
                 cycle_origin: k.div_euclid(tr.length as i64),
             };
         }
@@ -936,8 +1002,8 @@ impl Engine {
     }
 }
 
-fn modulated(id: usize, value: f32, amount: f32) -> f32 {
-    let log = [
+fn logarithmic_parameter(id: usize) -> bool {
+    [
         PITCH,
         DECAY,
         ATTACK,
@@ -949,9 +1015,24 @@ fn modulated(id: usize, value: f32, amount: f32) -> f32 {
         OPEN_DECAY,
         CLICK_FREQ,
         NOISE_FREQ,
+        FILTER_ENV_ATTACK,
+        FILTER_ENV_DECAY,
+        ASSIGN_ENV_ATTACK,
+        ASSIGN_ENV_DECAY,
+        CUTOFF2,
     ]
-    .contains(&id);
-    let value = if log {
+    .contains(&id)
+}
+fn normalized_parameter(id: usize, value: f32) -> f32 {
+    if logarithmic_parameter(id) {
+        ((value + 0.001) / (MIN[id] + 0.001)).ln() / ((MAX[id] + 0.001) / (MIN[id] + 0.001)).ln()
+    } else {
+        (value - MIN[id]) / (MAX[id] - MIN[id])
+    }
+    .clamp(0., 1.)
+}
+fn modulated(id: usize, value: f32, amount: f32) -> f32 {
+    let value = if logarithmic_parameter(id) {
         let low = MIN[id] + 0.001;
         let ratio = (MAX[id] + 0.001) / low;
         let norm = ((value + 0.001) / low).ln() / ratio.ln();
@@ -1150,10 +1231,15 @@ pub extern "C" fn lxr_track_get(p: u32, t: u32, field: u32) -> f32 {
                 1 => t.delay,
                 2 => t.groove as f32,
                 3 => t.groove_amount,
+                4 => t.swing,
                 _ => 0.,
             })
             .unwrap_or(0.)
     })
+}
+#[no_mangle]
+pub extern "C" fn lxr_track_swing(p: u32, t: u32, amount: f32) {
+    with(|e| e.track_swing(p as usize, t as usize, amount));
 }
 #[no_mangle]
 pub extern "C" fn lxr_track_settings(
@@ -1208,6 +1294,10 @@ pub extern "C" fn lxr_route(index: u32, source: u32, voice: u32, param: u32, amo
             amount,
         )
     });
+}
+#[no_mangle]
+pub extern "C" fn lxr_route_source(index: u32, voice: u32, param: u32, configured: u32) {
+    with(|e| e.set_route_source(index as usize, voice as u8, param as u8, configured != 0));
 }
 #[no_mangle]
 pub extern "C" fn lxr_macro(index: u32, value: f32) {

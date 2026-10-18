@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>DXM-088</string>
 	<key>CFBundleGetInfoString</key>
-	<string>DXM-088 v0.8.1</string>
+	<string>DXM-088 v0.9.0</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.ErikaRust.clap.LXR02</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -17,11 +17,11 @@
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.8.1</string>
+	<string>0.9.0</string>
 	<key>CFBundleSignature</key>
 	<string>LxR2</string>
 	<key>CFBundleVersion</key>
-	<string>0.8.1</string>
+	<string>0.9.0</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>

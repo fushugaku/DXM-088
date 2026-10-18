@@ -65,9 +65,16 @@ pub struct Voice {
     oscillators: [Oscillator; 3],
     noise_osc: Oscillator,
     amplitude: Envelope,
+    filter_envelope: Envelope,
+    assign_envelope: Envelope,
+    filter_level: f32,
+    assign_level: f32,
     pitch: Decay,
     transient: Transient,
     filter: Filter,
+    filter2: Filter,
+    modeled_filters: [crate::rustias_filter::Model; 2],
+    filter_settings: [[f32; 4]; 2],
     shaper: Shaper,
     extra_drive: Drive,
     velocity: f32,
@@ -97,9 +104,16 @@ impl Voice {
                 ..Default::default()
             },
             amplitude: Envelope::default(),
+            filter_envelope: Envelope::default(),
+            assign_envelope: Envelope::default(),
+            filter_level: 0.,
+            assign_level: 0.,
             pitch: Decay::default(),
             transient: Transient::default(),
             filter: Filter::default(),
+            filter2: Filter::default(),
+            modeled_filters: [crate::rustias_filter::Model::default(); 2],
+            filter_settings: [[0.; 4]; 2],
             shaper: Shaper {
                 smooth: OnePole {
                     coefficient: 0.01,
@@ -141,6 +155,28 @@ impl Voice {
             self.amplitude.attack = (64. / (self.p[ATTACK].max(0.012) * sr)) as f64;
         }
         self.amplitude.slope(self.p[SLOPE]);
+        for (env, attack, decay, slope) in [
+            (
+                &mut self.filter_envelope,
+                FILTER_ENV_ATTACK,
+                FILTER_ENV_DECAY,
+                FILTER_ENV_SLOPE,
+            ),
+            (
+                &mut self.assign_envelope,
+                ASSIGN_ENV_ATTACK,
+                ASSIGN_ENV_DECAY,
+                ASSIGN_ENV_SLOPE,
+            ),
+        ] {
+            env.attack = if self.p[attack] <= 0. {
+                1.
+            } else {
+                (64. / (self.p[attack] * sr)).min(1.) as f64
+            };
+            env.decay = (64. / (self.p[decay] * sr)) as f64;
+            env.slope(self.p[slope]);
+        }
         self.pitch.delta = 64. / (self.p[PITCH_DECAY] * sr);
         let s = self.p[PITCH_SLOPE];
         self.pitch.slope = (2. * s - 1.) / (1. - s);
@@ -169,6 +205,11 @@ impl Voice {
         }
         self.pitch.level = 1.;
         self.amplitude.trigger();
+        // Filter and assignable envelopes retrigger independently on every hit.
+        self.filter_envelope.level = 0.;
+        self.assign_envelope.level = 0.;
+        self.filter_envelope.trigger();
+        self.assign_envelope.trigger();
         self.transient.trigger();
         let offset = if self.transient.kind == 1 {
             1. - self.p[CLICK]
@@ -260,6 +301,8 @@ impl Voice {
         let direct_attack = self.amplitude.attack == 1. && matches!(self.amplitude.stage, 1 | 3);
         self.amp_previous = self.amp_current;
         self.amp_current = self.amplitude.tick();
+        self.filter_level = self.filter_envelope.tick().clamp(0., 1.);
+        self.assign_level = self.assign_envelope.tick().clamp(0., 1.);
         if self.index < 3 && direct_attack {
             self.amp_previous = self.amp_current;
         }
@@ -270,8 +313,59 @@ impl Voice {
         if self.p[VELOCITY_TARGET] as u8 == 2 {
             cutoff *= 2f32.powf((self.velocity - 1.) * self.p[VELOCITY_AMOUNT] * 4.);
         }
+        cutoff *= 2f32.powf(self.filter_level * self.p[FILTER_ENV_AMOUNT] / 12.);
+        let cutoff2 =
+            self.p[CUTOFF2] * 2f32.powf(self.filter_level * self.p[FILTER_ENV_AMOUNT2] / 12.);
+        self.filter_settings = [
+            [
+                cutoff,
+                self.p[RESONANCE],
+                self.p[FILTER_DRIVE],
+                self.p[FILTER_MORPH],
+            ],
+            [
+                cutoff2,
+                self.p[RESONANCE2],
+                self.p[FILTER_DRIVE2],
+                self.p[FILTER_MORPH2],
+            ],
+        ];
         self.filter
             .configure(cutoff, self.p[RESONANCE], self.p[FILTER_DRIVE], sr);
+        self.filter2
+            .configure(cutoff2, self.p[RESONANCE2], self.p[FILTER_DRIVE2], sr);
+    }
+    pub fn envelope_levels(&self) -> [f32; 3] {
+        [
+            self.amp_current.clamp(0., 1.),
+            self.filter_level,
+            self.assign_level,
+        ]
+    }
+    fn filter_tick(&mut self, input: i16, slot: usize, sr: f32) -> i16 {
+        let kind = if slot == 0 && self.p[FILTER_MODEL] > 0. {
+            7 + self.p[FILTER_MODEL] as u8
+        } else {
+            self.p[if slot == 0 { FILTER } else { FILTER2 }] as u8
+        };
+        if kind < 8 {
+            return if slot == 0 {
+                self.filter.tick(input, kind)
+            } else {
+                self.filter2.tick(input, kind)
+            };
+        }
+        let [cutoff, resonance, drive, morph] = self.filter_settings[slot];
+        let sample = self.modeled_filters[slot].sample(
+            input as f64 / 32768.,
+            kind - 7,
+            cutoff as f64,
+            resonance as f64,
+            drive as f64,
+            morph as f64,
+            sr as f64,
+        );
+        fw::sat16((sample * 32768.) as i32)
     }
     #[inline]
     pub fn tick(&mut self, _index: usize, sr: f32, sine: &Sine) -> f32 {
@@ -286,15 +380,19 @@ impl Voice {
         let width = self.p[PWM];
         let fm = self.modulation_amount;
         let rng = &mut self.noise;
-        let sample = if self.index == 3 {
+        let parallel_input;
+        let mut sample = if self.index == 3 {
             // 0x0801119c: filter the clocked noise alone; mix pitched tone after it.
             let noise = self
                 .noise_osc
                 .tick(0.9, width, None, || rng.next_u32() as i16);
-            let noise = self.filter.tick(noise, self.p[FILTER] as u8) as f32;
             let tone =
                 self.oscillators[0].tick(1. - self.p[NOISE], width, None, || rng.next_u32() as i16);
-            self.transient.tick() as f32 + noise.mul_add(self.p[NOISE], tone as f32)
+            let transient = self.transient.tick() as f32;
+            parallel_input =
+                fw::sat16((transient + (noise as f32).mul_add(self.p[NOISE], tone as f32)) as i32);
+            let noise = self.filter_tick(noise, 0, sr) as f32;
+            transient + noise.mul_add(self.p[NOISE], tone as f32)
         } else {
             let m1 = self.oscillators[1].tick(fm, width, None, || rng.next_u32() as i16);
             let signal = if self.index >= 4 {
@@ -313,12 +411,23 @@ impl Voice {
             };
             if self.index < 3 {
                 let combined = fw::sat16(signal as i32 + self.transient.tick() as i32);
-                self.filter.tick(combined, self.p[FILTER] as u8) as f32
+                parallel_input = combined;
+                self.filter_tick(combined, 0, sr) as f32
             } else {
-                let filtered = self.filter.tick(signal, self.p[FILTER] as u8);
-                fw::sat16(filtered as i32 + self.transient.tick() as i32) as f32
+                let filtered = self.filter_tick(signal, 0, sr);
+                let transient = self.transient.tick();
+                parallel_input = fw::sat16(signal as i32 + transient as i32);
+                fw::sat16(filtered as i32 + transient as i32) as f32
             }
         };
+        if self.p[FILTER2] > 0. {
+            sample = if self.p[FILTER_ROUTING] < 0.5 {
+                self.filter_tick(fw::sat16(sample as i32), 1, sr) as f32
+            } else {
+                let second = self.filter_tick(parallel_input, 1, sr) as f32;
+                sample + (second - sample) * self.p[FILTER_BALANCE]
+            };
+        }
         // Drums interpolate EG endpoints over 64 samples; snare/cymbals hold it.
         let amp = if self.index < 3 {
             ((i as f32 * (1. / 63.)) as f64).mul_add(

@@ -1,6 +1,6 @@
 import {uploadSamples} from './feature-state.js';
 // Only messaging and channel copies live here. All synthesis and sequencing is Rust.
-const allowed=new Set(['lxr_param','lxr_load_kit','lxr_morph','lxr_tempo','lxr_play','lxr_stop','lxr_panic','lxr_trigger','lxr_pattern','lxr_set_step','lxr_set_lock','lxr_length','lxr_generate','lxr_level','lxr_mute','lxr_solo','lxr_fx','lxr_track_settings','lxr_step_extras','lxr_route','lxr_macro','lxr_performance','lxr_scene_capture','lxr_scene_enable','lxr_scene_param','lxr_scene_mix','lxr_scene_fx','lxr_scene_misc','lxr_sample_settings']);
+const allowed=new Set(['lxr_param','lxr_load_kit','lxr_morph','lxr_tempo','lxr_play','lxr_stop','lxr_panic','lxr_trigger','lxr_pattern','lxr_set_step','lxr_set_lock','lxr_length','lxr_generate','lxr_level','lxr_mute','lxr_solo','lxr_fx','lxr_track_settings','lxr_track_swing','lxr_step_extras','lxr_route','lxr_route_source','lxr_macro','lxr_performance','lxr_scene_capture','lxr_scene_enable','lxr_scene_param','lxr_scene_mix','lxr_scene_fx','lxr_scene_misc','lxr_sample_settings']);
 class LxrProcessor extends AudioWorkletProcessor {
   constructor(options){
     super();

@@ -69,6 +69,7 @@ static std::vector<uint8_t> saveState(){
 - (void)noteOff:(id)sender;
 - (void)capture:(id)sender;
 - (void)reopen:(id)sender;
+- (void)legacy:(id)sender;
 - (void)narrow:(id)sender;
 @end
 @implementation LXR02HostDelegate
@@ -83,12 +84,12 @@ static std::vector<uint8_t> saveState(){
   if(!plug||!plug->init(plug)||!plug->activate(plug,48000.,1,512)||!plug->start_processing(plug)){[NSApp terminate:nil];return;}
   const int w=1120,h=860;
   window=[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,w,h+40) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskResizable backing:NSBackingStoreBuffered defer:NO];
-  window.title=@"DXM-088 · kit and pattern memory test";window.contentMinSize=NSMakeSize(360,520);window.delegate=self;
+  window.title=@"DXM-088 · synthesis and MIDI test";window.contentMinSize=NSMakeSize(360,520);window.delegate=self;
   editorView=[[NSView alloc]initWithFrame:NSMakeRect(0,0,w,h)];editorView.autoresizingMask=NSViewWidthSizable|NSViewHeightSizable;[window.contentView addSubview:editorView];
   toolbar=[[NSStackView alloc]initWithFrame:NSMakeRect(8,h,w-16,40)];toolbar.orientation=NSUserInterfaceLayoutOrientationHorizontal;toolbar.spacing=8;toolbar.detachesHiddenViews=YES;toolbar.autoresizingMask=NSViewWidthSizable|NSViewMinYMargin;
-  NSArray* names=@[@"MIDI 36",@"MIDI 45",@"Note off",@"Capture state",@"Save & reopen",@"390 px"];
-  SEL actions[]={@selector(note36:),@selector(note45:),@selector(noteOff:),@selector(capture:),@selector(reopen:),@selector(narrow:)};
-  for(int i=0;i<6;i++){NSButton* button=[NSButton buttonWithTitle:names[i] target:self action:actions[i]];[toolbar addArrangedSubview:button];}[window.contentView addSubview:toolbar];
+  NSArray* names=@[@"MIDI 36",@"MIDI 45",@"Note off",@"Capture state",@"Save & reopen",@"Load 0.8.1",@"390 px"];
+  SEL actions[]={@selector(note36:),@selector(note45:),@selector(noteOff:),@selector(capture:),@selector(reopen:),@selector(legacy:),@selector(narrow:)};
+  for(int i=0;i<7;i++){NSButton* button=[NSButton buttonWithTitle:names[i] target:self action:actions[i]];[toolbar addArrangedSubview:button];}[window.contentView addSubview:toolbar];
   if(!attachEditor()){[NSApp terminate:nil];return;}
   [window center];[window makeKeyAndOrderFront:nil];
   [NSTimer scheduledTimerWithTimeInterval:1./30. repeats:YES block:^(NSTimer*){tick();}];
@@ -97,9 +98,14 @@ static std::vector<uint8_t> saveState(){
 - (void)note45:(id)sender{requestedNote=45;}
 - (void)noteOff:(id)sender{requestedNote=-1;}
 - (void)capture:(id)sender{saveState();}
+- (void)legacy:(id)sender{
+  NSString* folder=[[NSBundle mainBundle]objectForInfoDictionaryKey:@"LXR02QAFolder"];
+  NSData* data=[NSData dataWithContentsOfFile:[folder stringByAppendingPathComponent:@"editor-memory-081.clapstate"]];
+  if(data)[self reopen:data];
+}
 - (void)narrow:(id)sender{const bool small=window.contentView.bounds.size.width>=500;for(NSButton* button in toolbar.arrangedSubviews)if(![button.title isEqualToString:@"390 px"])button.hidden=small;[toolbar layoutSubtreeIfNeeded];[window setContentSize:NSMakeSize(small?390:1120,900)];}
 - (void)reopen:(id)sender{
-  auto bytes=saveState();if(bytes.empty())return;gui->destroy(plug);plug->stop_processing(plug);plug->deactivate(plug);plug->destroy(plug);callbackPending=false;
+  std::vector<uint8_t> bytes;if([sender isKindOfClass:NSData.class]){NSData* data=sender;const auto* start=static_cast<const uint8_t*>(data.bytes);bytes.assign(start,start+data.length);}else bytes=saveState();if(bytes.empty())return;gui->destroy(plug);plug->stop_processing(plug);plug->deactivate(plug);plug->destroy(plug);callbackPending=false;
   plug=factory->create_plugin(factory,&host,factory->get_plugin_descriptor(factory,0)->id);if(!plug||!plug->init(plug)){[NSApp terminate:nil];return;}
   struct Reader{std::vector<uint8_t>*bytes;size_t at=0;} reader{&bytes};clap_istream_t stream{};stream.ctx=&reader;stream.read=[](const clap_istream_t*s,void*p,uint64_t n)->int64_t{auto&r=*static_cast<Reader*>(s->ctx);n=std::min<uint64_t>(n,r.bytes->size()-r.at);std::memcpy(p,r.bytes->data()+r.at,n);r.at+=n;return n;};
   auto state=static_cast<const clap_plugin_state_t*>(plug->get_extension(plug,CLAP_EXT_STATE));if(!state||!state->load(plug,&stream)||!plug->activate(plug,48000.,1,512)||!plug->start_processing(plug)||!attachEditor()){[NSApp terminate:nil];return;}lastNote=-1;

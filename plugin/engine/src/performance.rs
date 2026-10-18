@@ -1,7 +1,5 @@
 use super::*;
-use lxr02::{
-    performance::{Route, Scene, ROUTES},
-};
+use lxr02::performance::{Route, Scene, ROUTES};
 
 pub fn encode(data: &[f32]) -> String {
     const ALPH: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -93,7 +91,7 @@ fn scene_json(s: &Scene) -> Value {
 impl Instrument {
     pub(super) fn extensions(&self, j: &mut Value) {
         let e = &self.engine;
-        j["performance"] = json!({"macros":e.global_macros,"macroNames":self.macro_names,"routes":e.routes.iter().map(|r|json!({"source":r.source,"voice":r.voice,"param":r.param,"amount":r.amount})).collect::<Vec<_>>(),"velocityDepth":e.velocity_depth,"switchQuant":e.switch_quant,"lfoPeriods":e.lfo_periods,"mutation":self.mutation});
+        j["performance"] = json!({"macros":e.global_macros,"macroNames":self.macro_names,"routes":e.routes.iter().map(|r|json!({"source":r.source,"voice":r.voice,"param":r.param,"amount":r.amount,"sourceVoice":r.source_voice,"sourceParam":r.source_param,"configured":r.configured})).collect::<Vec<_>>(),"velocityDepth":e.velocity_depth,"switchQuant":e.switch_quant,"lfoPeriods":e.lfo_periods,"mutation":self.mutation});
         j["scenes"] = json!(e
             .scenes
             .iter()
@@ -127,10 +125,24 @@ impl Instrument {
         for i in 0..ROUTES {
             let r = &perf["routes"][i];
             self.engine.routes[i] = Route {
-                source: num(&r["source"], 0., 8.)? as u8,
+                source: num(&r["source"], 0., 12.)? as u8,
                 voice: num(&r["voice"], 0., 5.)? as u8,
-                param: num(&r["param"], 0., 38.)? as u8,
+                param: num(&r["param"], 0., (PARAMS - 1) as f64)? as u8,
                 amount: num(&r["amount"], -1., 1.)?,
+                source_voice: if r.get("sourceVoice").is_some() {
+                    num(&r["sourceVoice"], 0., 6.)? as u8
+                } else {
+                    num(&r["voice"], 0., 5.)? as u8
+                },
+                source_param: if r.get("sourceParam").is_some() {
+                    num(&r["sourceParam"], 0., (PARAMS - 1) as f64)? as u8
+                } else {
+                    12
+                },
+                configured: r
+                    .get("configured")
+                    .map(|x| x.as_bool())
+                    .unwrap_or(Some(r["amount"].as_f64()? != 0.))?,
             };
         }
         let count = j["patterns"].as_array()?.len();
@@ -150,6 +162,12 @@ impl Instrument {
                     num(&pattern["grooves"][t], 0., 4.)? as u8,
                     num(&pattern["grooveAmounts"][t], 0., 1.)?,
                 );
+                if let Some(swings) = pattern.get("swings") {
+                    if swings.as_array()?.len() != 7 {
+                        return None;
+                    }
+                    self.engine.track_swing(p, t, num(&swings[t], 0., 0.5)?);
+                }
                 for k in 0..64 {
                     let s = &pattern["tracks"][t][k];
                     self.engine.step_extras(
@@ -178,10 +196,11 @@ impl Instrument {
                 return None;
             }
             for v in 0..6 {
-                if x["params"][v].as_array()?.len() != 39 {
+                let size = x["params"][v].as_array()?.len();
+                if size != LEGACY_PARAMS && size != PARAMS {
                     return None;
                 }
-                for id in 0..39 {
+                for id in 0..size {
                     s.params[v][id] = num(&x["params"][v][id], MIN[id] as f64, MAX[id] as f64)?;
                 }
             }

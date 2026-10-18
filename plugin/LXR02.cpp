@@ -136,15 +136,15 @@ std::string LXR02::ProjectJSON() const {
 }
 bool LXR02::SerializeState(IByteChunk& chunk) const {
   std::lock_guard<std::mutex> guard(mModelMutex);const auto s=ProjectJSON();
-  const uint32_t magic=0x4c585235;const int size=(int)s.size();chunk.Put(&magic);chunk.Put(&size);chunk.PutBytes(s.data(),size);return SerializeParams(chunk);
+  const uint32_t magic=0x4c585236;const int size=(int)s.size();chunk.Put(&magic);chunk.Put(&size);chunk.PutBytes(s.data(),size);return SerializeParams(chunk);
 }
 int LXR02::UnserializeState(const IByteChunk& chunk,int pos){
-  uint32_t magic=0;int size=0;pos=chunk.Get(&magic,pos);if(pos<0||(magic!=0x4c585233&&magic!=0x4c585234&&magic!=0x4c585235))return -1;
+  uint32_t magic=0;int size=0;pos=chunk.Get(&magic,pos);if(pos<0||(magic!=0x4c585233&&magic!=0x4c585234&&magic!=0x4c585235&&magic!=0x4c585236))return -1;
   pos=chunk.Get(&size,pos);if(pos<0||size<=0||size>64000000||size>chunk.Size()-pos)return -1;
   std::string s(size,'\0');pos=chunk.GetBytes(s.data(),size,pos);if(pos<0)return -1;
   std::lock_guard<std::mutex> guard(mModelMutex);
   if(!lxrp_load(mModel,(const uint8_t*)s.data(),s.size()))return -1;
-  const int count=magic==0x4c585233?274:magic==0x4c585234?283:kParams;
+  const int count=magic==0x4c585233?274:magic==0x4c585234?283:magic==0x4c585235?292:kParams;
   for(int p=0;p<count;p++){double v;pos=chunk.Get(&v,pos);if(pos<0||!std::isfinite(v))return -1;GetParam(p)->Set(v);}
   for(int p=count;p<kParams;p++)GetParam(p)->Set(lxrp_get(mModel,p));
   SyncModel(-2);PublishModel();mProjectDirty=true;return pos;
@@ -229,7 +229,7 @@ bool LXR02::OnMessage(int tag,int,int size,const void* data){
     lxrp_set(mModel,id,j["value"].get<float>());NotifyParams();return true;
   }
   if(j.value("type","")!="commands"||!j["commands"].is_array()||j["commands"].size()>15000)return false;
-  static const std::unordered_map<std::string,uint32_t> ops={{"lxr_param",0},{"lxr_tempo",1},{"lxr_pattern",2},{"lxr_length",3},{"lxr_set_step",4},{"lxr_set_lock",5},{"lxr_level",6},{"lxr_mute",7},{"lxr_solo",8},{"lxr_fx",9},{"lxr_morph",10},{"lxr_load_kit",11},{"lxr_trigger",12},{"lxr_panic",13},{"lxr_stop",14},{"lxr_play",15},{"lxr_generate",16},{"lxr_track_settings",17},{"lxr_step_extras",18},{"lxr_route",19},{"lxr_macro",20},{"lxr_performance",21},{"lxr_scene_capture",22},{"lxr_scene_enable",23},{"lxr_sample_settings",24}};
+  static const std::unordered_map<std::string,uint32_t> ops={{"lxr_param",0},{"lxr_tempo",1},{"lxr_pattern",2},{"lxr_length",3},{"lxr_set_step",4},{"lxr_set_lock",5},{"lxr_level",6},{"lxr_mute",7},{"lxr_solo",8},{"lxr_fx",9},{"lxr_morph",10},{"lxr_load_kit",11},{"lxr_trigger",12},{"lxr_panic",13},{"lxr_stop",14},{"lxr_play",15},{"lxr_generate",16},{"lxr_track_settings",17},{"lxr_step_extras",18},{"lxr_route",19},{"lxr_macro",20},{"lxr_performance",21},{"lxr_scene_capture",22},{"lxr_scene_enable",23},{"lxr_sample_settings",24},{"lxr_track_swing",29},{"lxr_route_source",30}};
   bool full=j["commands"].size()>64;
   const int pattern=j.value("pattern",-1);
   auto enqueue=[&](Command command){command.revision=++mRevision;const auto w=mWrite.load(std::memory_order_relaxed);if(w-mRead.load(std::memory_order_acquire)<kQueue){mCommands[w%kQueue]=command;mWrite.store(w+1,std::memory_order_release);}else full=true;};
@@ -243,7 +243,7 @@ bool LXR02::OnMessage(int tag,int,int size,const void* data){
     if(!full&&pattern>=0&&pattern<128&&lxrp_scene_enabled(mModel,pattern)){
       auto scene=[&](uint32_t op,std::array<double,8> args,int parameter){if(parameter<0||parameter>=kParams)return;Command c{};c.op=op;c.args=args;c.parameter=parameter;c.value=lxrp_get(mModel,parameter);enqueue(c);};
       const auto& a=command.args;
-      if(command.op==0){scene(25,{double(pattern),a[0],a[1],a[2]},int(a[0])*39+int(a[1]));continue;}
+      if(command.op==0){scene(25,{double(pattern),a[0],a[1],a[2]},int(a[1])<39?int(a[0])*39+int(a[1]):292+int(a[0])*17+int(a[1])-39);continue;}
       if(command.op>=6&&command.op<=8){scene(26,{double(pattern),a[0],double(command.op-6),a[1]},(command.op==6?249:command.op==7?256:263)+int(a[0]));continue;}
       if(command.op==9){scene(27,{double(pattern),a[0],a[1]},234+int(a[0]));continue;}
       if(command.op==10){scene(28,{double(pattern),4.,a[0]},271);scene(28,{double(pattern),5.,a[1]},272);continue;}
