@@ -31,4 +31,4 @@ for extension in ['vst3','component','clap']:
  binary=release/f'DXM-088.{extension}/Contents/MacOS/DXM-088'
  manifest[f'DXM-088.{extension}']={'sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'architectures':subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip().split()}
 (release/'MANIFEST.json').write_text(json.dumps(manifest,indent=2)+'\n')
-subprocess.run(['ditto','-c','-k','--keepParent',str(release),str(root/'build/plugins/DXM-088-macOS-universal.zip')],check=True)
+subprocess.run(['ditto','-c','-k','--norsrc','--noextattr','--keepParent',str(release),str(root/'build/plugins/DXM-088-macOS-universal.zip')],check=True)
