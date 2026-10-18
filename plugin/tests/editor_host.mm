@@ -81,8 +81,18 @@ static std::vector<uint8_t> saveState(){
   if(!entry||!entry->init(path.fileSystemRepresentation)){[NSApp terminate:nil];return;}
   factory=static_cast<const clap_plugin_factory_t*>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
   plug=factory->create_plugin(factory,&host,factory->get_plugin_descriptor(factory,0)->id);
-  if(!plug||!plug->init(plug)||!plug->activate(plug,48000.,1,512)||!plug->start_processing(plug)){[NSApp terminate:nil];return;}
-  const int w=1120,h=860;
+  if(!plug||!plug->init(plug)){[NSApp terminate:nil];return;}
+  if([[[NSBundle mainBundle]objectForInfoDictionaryKey:@"LXR02QARestoreSaved"]boolValue]){
+    NSString* folder=[[NSBundle mainBundle]objectForInfoDictionaryKey:@"LXR02QAFolder"];
+    NSData* data=[NSData dataWithContentsOfFile:[folder stringByAppendingPathComponent:@"editor-memory-state.clapstate"]];
+    struct Reader{const uint8_t* data;size_t size,at=0;} reader{static_cast<const uint8_t*>(data.bytes),data.length};
+    clap_istream_t stream{};stream.ctx=&reader;stream.read=[](const clap_istream_t*s,void*p,uint64_t n)->int64_t{auto&r=*static_cast<Reader*>(s->ctx);n=std::min<uint64_t>(n,r.size-r.at);std::memcpy(p,r.data+r.at,n);r.at+=n;return n;};
+    auto state=static_cast<const clap_plugin_state_t*>(plug->get_extension(plug,CLAP_EXT_STATE));
+    if(data.length&&(!state||!state->load(plug,&stream))){[NSApp terminate:nil];return;}
+  }
+  if(!plug->activate(plug,48000.,1,512)||!plug->start_processing(plug)){[NSApp terminate:nil];return;}
+  const NSRect screen=NSScreen.mainScreen.visibleFrame;
+  const int w=std::min(900,int(screen.size.width)-40),h=std::min(620,int(screen.size.height)-140);
   window=[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,w,h+40) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskResizable backing:NSBackingStoreBuffered defer:NO];
   window.title=@"DXM-088 · synthesis and MIDI test";window.contentMinSize=NSMakeSize(360,520);window.delegate=self;
   editorView=[[NSView alloc]initWithFrame:NSMakeRect(0,0,w,h)];editorView.autoresizingMask=NSViewWidthSizable|NSViewHeightSizable;[window.contentView addSubview:editorView];
@@ -103,7 +113,7 @@ static std::vector<uint8_t> saveState(){
   NSData* data=[NSData dataWithContentsOfFile:[folder stringByAppendingPathComponent:@"editor-memory-081.clapstate"]];
   if(data)[self reopen:data];
 }
-- (void)narrow:(id)sender{const bool small=window.contentView.bounds.size.width>=500;for(NSButton* button in toolbar.arrangedSubviews)if(![button.title isEqualToString:@"390 px"])button.hidden=small;[toolbar layoutSubtreeIfNeeded];[window setContentSize:NSMakeSize(small?390:1120,900)];}
+- (void)narrow:(id)sender{const bool small=window.contentView.bounds.size.width>=500;for(NSButton* button in toolbar.arrangedSubviews)if(![button.title isEqualToString:@"390 px"])button.hidden=small;[toolbar layoutSubtreeIfNeeded];[window setContentSize:NSMakeSize(small?390:900,std::min(660,int(NSScreen.mainScreen.visibleFrame.size.height)-100))];[window center];}
 - (void)reopen:(id)sender{
   std::vector<uint8_t> bytes;if([sender isKindOfClass:NSData.class]){NSData* data=sender;const auto* start=static_cast<const uint8_t*>(data.bytes);bytes.assign(start,start+data.length);}else bytes=saveState();if(bytes.empty())return;gui->destroy(plug);plug->stop_processing(plug);plug->deactivate(plug);plug->destroy(plug);callbackPending=false;
   plug=factory->create_plugin(factory,&host,factory->get_plugin_descriptor(factory,0)->id);if(!plug||!plug->init(plug)){[NSApp terminate:nil];return;}
