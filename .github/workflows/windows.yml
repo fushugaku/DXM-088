@@ -36,6 +36,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node tools/verify-project-format.mjs
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node tools/verify-pattern-bank.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node tools/verify-performance.mjs
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Load CLAP module and verify public identity
@@ -65,5 +67,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "DXM-088 ${RELEASE_TAG#v}" --notes "DXM-088 for Windows x64: VST3 and CLAP with an offline web editor. Extract the ZIP and run Install.cmd, or copy the plug-ins to your DAW scan folders. The CLAP resource folder must stay beside the CLAP module. Microsoft WebView2 Runtime is required."
-          gh release upload "$RELEASE_TAG" release/* --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Existing release and its assets are preserved."
+          else
+            gh release create "$RELEASE_TAG" release/* --title "DXM-088 ${RELEASE_TAG#v}" --notes "DXM-088 for Windows x64: VST3 and CLAP with an offline web editor. All 128 MIDI notes trigger independent patterns while held. Extract the ZIP and run Install.cmd. Keep the CLAP resources beside its module. Microsoft WebView2 Runtime is required."
+          fi
