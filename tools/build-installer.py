@@ -113,7 +113,7 @@ def main():
             if suffix == 'docs':
                 documents = payload / 'Library/Application Support/DXM-088'
                 documents.mkdir(parents=True)
-                for filename in ['README.md', 'SOURCES.json', 'MANIFEST.json', 'LICENSES', 'Examples']:
+                for filename in ['README.md', 'NOTICE.md', 'SOURCES.json', 'MANIFEST.json', 'LICENSES', 'Examples']:
                     run('ditto', RELEASE / filename, documents / filename)
                 description = 'Документация и лицензии'
                 title = description

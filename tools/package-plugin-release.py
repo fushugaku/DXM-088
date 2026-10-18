@@ -6,6 +6,7 @@ root=Path(__file__).resolve().parent.parent
 release=root/'build/plugins/dxm088-macos-universal'
 shutil.copy2(root/'plugin/README.md',release/'README.md')
 shutil.copy2(root/'plugin/SOURCES.json',release/'SOURCES.json')
+shutil.copy2(root/'NOTICE.md',release/'NOTICE.md')
 examples=release/'Examples';examples.mkdir(exist_ok=True)
 shutil.copy2(root/'examples/Polyrhythm Scenes.dxm088.json',examples/'Polyrhythm Scenes.dxm088.json')
 notices=release/'LICENSES';notices.mkdir(exist_ok=True)
