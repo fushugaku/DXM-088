@@ -30,9 +30,9 @@ jobs:
         run: |
           $env:RUSTC = (rustup which --toolchain stable rustc)
           $env:RUSTDOC = (rustup which --toolchain stable rustdoc)
-          rustup run stable cargo test --locked --release
+          rustup run stable cargo test --locked
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          rustup run stable cargo test --locked --release --manifest-path plugin/engine/Cargo.toml
+          rustup run stable cargo test --locked --manifest-path plugin/engine/Cargo.toml
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node tools/verify-project-format.mjs
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
