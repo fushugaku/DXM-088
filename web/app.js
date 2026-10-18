@@ -1,5 +1,5 @@
 import {readStoredProject,storeProject} from './project-storage.js';
-import {upgradeFeatures,validateFeatures,featureCommands,uploadSamples,effective,updateScene,captureScene,divisions,conditionNames,defaultPerformance} from './feature-state.js';
+import {upgradeFeatures,validateFeatures,featureCommands,uploadSamples,effective,updateScene,divisions,conditionNames,defaultPerformance} from './feature-state.js';
 import {createPerformanceUI} from './performance-ui.js';
 import {migrateProject,FX_DEFAULTS,defaultPlugin} from './project-format.js';
 import {kits,tracks,shortTracks,keys,defs,pages,clamp,bindDefinitions,normalize,denormalize,constrain,format} from './parameters.js';
@@ -36,15 +36,7 @@ function toast(message){$('#toast').textContent=message;$('#toast').classList.ad
 function report(error){console.error(error);toast(error instanceof Error?error.message:String(error));}
 function saveSoon(){if(native){native.meta(state.name,state.kit,{kitPreset:state.kitPreset??null,macroNames:state.performance.macroNames,mutation:state.performance.mutation},state.pattern);return;}clearTimeout(dirtyTimer);dirtyTimer=setTimeout(()=>{storeProject(state).catch(()=>{$('#engine-info').textContent='Browser storage unavailable · download your project';});},250);}
 function remember(indices){
- const memory=native&&nativeMidiHeld&&(state.plugin?.midiMode??0)===0,initialize=memory&&!state.plugin?.patternMemory;
- past.push(captureHistory(state,initialize?true:indices===true||Array.isArray(indices)?indices:[state.pattern]));if(past.length>32)past.shift();$('#undo').disabled=false;
- if(memory&&(initialize||!state.scenes[state.pattern]?.enabled)){
-  const slots=initialize?state.scenes.map((_,p)=>p):[state.pattern];
-  for(const p of slots)if(!state.scenes[p]?.enabled)state.scenes[p]=captureScene({...state,pattern:p});
-  state.plugin={...defaultPlugin(),...state.plugin,patternMemory:true};
-  receivingNative=true;try{batch(snapshotCommands(state));}finally{receivingNative=false;}
-  native.project(state);
- }
+ past.push(captureHistory(state,indices===true||Array.isArray(indices)?indices:[state.pattern]));if(past.length>32)past.shift();$('#undo').disabled=false;
 }
 function command(fn,...args){
  if(fn==='lxr_param')state.params[args[0]][args[1]]=args[2];
@@ -98,7 +90,7 @@ function validateProject(input){
  if(!Array.isArray(raw.fx)||raw.fx.length!==15)fail();
  const ranges=[[0,7],[0,1],[0,0.743],[0,0.94],[0,1],[0,1],[0,1.5],[0,1],[0,1],[0,5],[0,1],[0,1],[0,1],[1,8],[0,1]];
  s.fx=raw.fx.map((x,i)=>number(x,...ranges[i]));
- s.plugin={...defaultPlugin(),baseNote:number(raw.plugin?.baseNote??0,0,120)|0,midiMode:number(raw.plugin?.midiMode??0,0,1)|0,outputMode:number(raw.plugin?.outputMode??0,0,1)|0,patternMemory:!!raw.plugin?.patternMemory};
+ s.plugin={...defaultPlugin(),baseNote:number(raw.plugin?.baseNote??0,0,120)|0,midiMode:number(raw.plugin?.midiMode??0,0,1)|0,outputMode:number(raw.plugin?.outputMode??0,0,1)|0};
  if(raw.plugin?.drumNotes){if(!Array.isArray(raw.plugin.drumNotes)||raw.plugin.drumNotes.length!==7)fail();s.plugin.drumNotes=raw.plugin.drumNotes.map(v=>number(v,0,127)|0);}
  return validateFeatures(raw,s,number,defs);
 }

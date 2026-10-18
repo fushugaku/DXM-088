@@ -34,9 +34,11 @@ instances and formats in `~/Library/Application Support/DXM-088/Kits` on macOS o
 so they also open on machines without the saved kit library. Browser kits use IndexedDB.
 
 In Patterns mode, edits made while holding a MIDI note remain in its pattern.
-The first edit captures independent sound/mix scenes for the bank, keeping other
-patterns' sounds intact. Rhythm, timing, locks, sound and FX return when that note
-is played again and are retained in the saved DAW project. Existing scenes remain intact.
+Each note retains its own rhythm: steps, track lengths, divisions, timing and locks.
+The kit sound, mixer and FX are shared across patterns. Replaying a note and opening
+the saved DAW project restore its rhythm without reverting the common sound.
+The separate Scenes controls remain available for explicitly captured sound scenes;
+editing under a held MIDI note never creates scenes automatically.
 
 In **MIDI → Patterns**, every MIDI note **0–127 (C−2–G8)** selects its own pattern and plays while held.
 New projects map **0 → A01**, **7 → A08**, **8 → B01**, **127 → P08**.

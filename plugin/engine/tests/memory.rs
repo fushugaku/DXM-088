@@ -5,7 +5,53 @@ fn render(i: &mut Instrument, n: usize) {
     assert!(audio.iter().all(|x| x.is_finite()));
 }
 #[test]
-fn note_selected_pattern_edits_survive_switches_and_project_restore() {
+fn note_patterns_keep_independent_rhythms_and_one_shared_kit_after_restore() {
+    let mut i = Instrument::new(48000.);
+    i.transport(120., 0., true);
+    let untouched = i.project()["patterns"][45].clone();
+    i.midi(0x90, 36, 100);
+    i.command(3, [36., 0., 11., 0., 0., 0., 0., 0.]);
+    i.command(4, [36., 0., 3., 0.42, 0.75, -2., 3., 0.]);
+    i.command(17, [36., 0., 3., 0.1, 2., 0.5, 0., 0.]);
+    i.set(0, 73.);
+    i.set(249, 0.61);
+    i.set(235, 0.47);
+    i.midi(0x80, 36, 0);
+    assert!(!i.engine.playing);
+    i.midi(0x90, 45, 100);
+    render(&mut i, 512);
+    assert_eq!(i.project()["patterns"][45], untouched);
+    assert_eq!(i.get(0), 73.);
+    assert_eq!(i.get(249), 0.61);
+    assert_eq!(i.get(235), 0.47);
+    // Sound edits on another note update the same kit. Rhythm edits stay put.
+    i.set(0, 81.);
+    i.set(249, 0.72);
+    i.set(235, 0.39);
+    i.command(3, [45., 0., 7., 0., 0., 0., 0., 0.]);
+    let saved = i.project();
+    let mut restored = Instrument::new(96000.);
+    restored.load(&saved).unwrap();
+    assert!(restored.engine.scenes.iter().all(|s| !s.enabled));
+    for note in [0, 36, 45, 127] {
+        restored.midi(0x90, note, 100);
+        render(&mut restored, 512);
+        assert_eq!(restored.engine.pattern, note as usize);
+        assert_eq!(restored.get(0), 81.);
+        assert_eq!(restored.get(249), 0.72);
+        assert_eq!(restored.get(235), 0.39);
+        restored.midi(0x80, note, 0);
+        assert!(!restored.engine.playing);
+    }
+    let track = restored.engine.patterns[36].tracks[0];
+    assert_eq!(track.length, 11);
+    assert_eq!(track.division, 3);
+    assert_eq!(track.steps[3].velocity, 0.42);
+    assert_eq!(restored.engine.patterns[45].tracks[0].length, 7);
+}
+
+#[test]
+fn manually_captured_scene_edits_survive_switches_and_project_restore() {
     let mut i = Instrument::new(48000.);
     i.transport(120., 0., true);
     for p in 0..128 {
@@ -42,13 +88,11 @@ fn user_kit_identity_is_embedded_and_needs_no_library_on_restore() {
     let mut i = Instrument::new(48000.);
     let mut project = i.project();
     project["kitPreset"] = serde_json::json!({"id":"saved-kit","name":"Мой кит"});
-    project["plugin"]["patternMemory"] = serde_json::json!(true);
     i.load(&project).unwrap();
     i.set(0, 123.);
     let mut restored = Instrument::new(44100.);
     restored.load(&i.project()).unwrap();
     assert_eq!(restored.project()["kitPreset"], project["kitPreset"]);
-    assert_eq!(restored.project()["plugin"]["patternMemory"], true);
     assert_eq!(restored.get(0), 123.);
     assert_eq!(i.copy_project(96000.).project(), i.project());
 }

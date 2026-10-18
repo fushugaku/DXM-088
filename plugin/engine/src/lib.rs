@@ -93,7 +93,6 @@ pub struct Instrument {
     name: String,
     kit: usize,
     kit_preset: Option<Value>,
-    pattern_memory: bool,
     velocities: [u8; 2048],
     pressures: [u8; 16],
     wheels: [u8; 16],
@@ -122,7 +121,6 @@ impl Instrument {
             name: "Session 01".into(),
             kit: 0,
             kit_preset: None,
-            pattern_memory: false,
             velocities: [127; 2048],
             pressures: [0; 16],
             wheels: [0; 16],
@@ -145,7 +143,6 @@ impl Instrument {
         n.name = self.name.clone();
         n.kit = self.kit;
         n.kit_preset = self.kit_preset.clone();
-        n.pattern_memory = self.pattern_memory;
         n.engine
             .scenes
             .copy_from_slice(self.engine.scenes.as_slice());
@@ -545,7 +542,6 @@ impl Instrument {
         let mut j = json!({"format":"lxr02-web","version":4,"name":self.name,"kit":self.kit,"bpm":e.bpm,"swing":e.swing,"pattern":e.pattern,"params":e.params.map(|p|p.to_vec()),"patterns":patterns,"levels":e.levels,"muted":e.muted,"solo":e.solo,"fx":(234..249).map(|p|self.get(p)).collect::<Vec<_>>(),"morph":e.global_morph[0],"morphTarget":e.global_morph[1],"plugin":{"version":2,"baseNote":self.base_note,"nativeFileDrag":cfg!(target_os="macos")}});
         j["plugin"] = json!({"version":3,"baseNote":self.base_note,"midiMode":self.midi_mode,"outputMode":self.output_mode,"drumNotes":self.drum_notes,"nativeFileDrag":cfg!(target_os="macos")});
         j["kitPreset"] = self.kit_preset.clone().unwrap_or(Value::Null);
-        j["plugin"]["patternMemory"] = json!(self.pattern_memory);
         self.extensions(&mut j);
         j
     }
@@ -563,7 +559,6 @@ impl Instrument {
             .collect();
         n.kit = j["kit"].as_u64()?.min(4) as usize;
         n.kit_preset = kit_preset(&j["kitPreset"]);
-        n.pattern_memory = j["plugin"]["patternMemory"].as_bool().unwrap_or(false);
         let num = |v: &Value, min: f64, max: f64| -> Option<f32> {
             let x = v.as_f64()?;
             (x.is_finite() && x >= min - 0.00001 && x <= max + 0.00001)

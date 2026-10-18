@@ -79,5 +79,6 @@ The selector groups Factory / My kits; saved project identities absent from the
 local library appear under In this project. A compact name dialog offers Update
 kit and Save as new. Errors stay inside the dialog. On phones the kit row spans
 the transport width below the pattern buttons, with 44px controls. Keep rhythms
-and MIDI routing outside kit presets. MIDI pattern edits initialize independent
-sound scenes and retain the note-selected slot through save/reopen.
+and MIDI routing outside kit presets. MIDI pattern edits retain only the rhythm
+and timing of the note-selected slot through save/reopen; sound, mix and FX stay
+shared. Sound scenes are created only through the explicit Scenes controls.
