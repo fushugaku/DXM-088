@@ -54,6 +54,8 @@ fn swing_preserves_pair_duration() {
 fn queued_pattern_changes_on_boundary() {
     let mut e = Engine::new(48000.);
     e.tempo(120., 0.);
+    // Pattern changes now default to immediate; exercise explicit bar quantization.
+    e.switch_quant = 2;
     e.play();
     e.select_pattern(3);
     energy(&mut e, 96000);
