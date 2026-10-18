@@ -17,4 +17,5 @@ Invoke-Checked { rustup run stable cargo build --locked --release --manifest-pat
 $taskLibrary = Join-Path (Get-Location) 'plugin/engine/target/x86_64-pc-windows-msvc/release/lxr02_plugin.lib'
 Invoke-Checked { cmake -S plugin -B target/plugin-build-win -G 'Visual Studio 17 2022' -A x64 "-DLXR_RUST_LIBRARY=$taskLibrary" }
 Invoke-Checked { cmake --build target/plugin-build-win --config Release --parallel 4 }
+Invoke-Checked { & (Join-Path (Get-Location) 'target/plugin-build-win/Release/dxm088-kit-store-tests.exe') }
 Invoke-Checked { python tools/package-windows-release.py }
