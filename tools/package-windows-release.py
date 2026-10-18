@@ -42,7 +42,8 @@ for name, path in [
     for path in path.glob('LICENSE*'):
         if path.is_file():
             shutil.copy2(path, notices / f'{name}-{path.name}')
-shutil.copy2(ROOT / '.deps/iplug2/WDL/license.txt', notices / 'WDL-license.txt')
+wdl = (ROOT / '.deps/iplug2/WDL/heapbuf.h').read_text(encoding='utf-8')
+(notices / 'WDL-heapbuf-notice.txt').write_text(wdl.split('*/', 1)[0] + '*/\n', encoding='utf-8')
 webview = (ROOT / '.deps/iplug2/IPlug/Extras/WebView/IPlugWebView.h').read_text(encoding='utf-8')
 (notices / 'iPlug2-WebView-MIT.txt').write_text(webview[webview.index('  MIT License'):webview.index('*/')].strip(' \n=') + '\n')
 cargo = subprocess.check_output(['rustup', 'which', '--toolchain', 'stable', 'cargo'], text=True).strip()

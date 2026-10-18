@@ -17,8 +17,8 @@ webview=root/'.deps/iplug2/IPlug/Extras/WebView/IPlugWebView.h'
 if webview.is_file():
  text=webview.read_text();notice=text[text.index('  MIT License'):text.index('*/')].strip(' \n=')
  (notices/'iPlug2-WebView-MIT.txt').write_text(notice+'\n')
-wdl=root/'.deps/iplug2/WDL/license.txt'
-if wdl.is_file():shutil.copy2(wdl,notices/'WDL-license.txt')
+wdl=(root/'.deps/iplug2/WDL/heapbuf.h').read_text(encoding='utf-8')
+(notices/'WDL-heapbuf-notice.txt').write_text(wdl.split('*/',1)[0]+'*/\n',encoding='utf-8')
 cargo=subprocess.check_output(['rustup','which','cargo'],text=True).strip()
 metadata=json.loads(subprocess.check_output([cargo,'metadata','--offline','--format-version','1','--manifest-path',str(root/'plugin/engine/Cargo.toml')],text=True))
 for package in metadata['packages']:
