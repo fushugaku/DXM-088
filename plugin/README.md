@@ -38,9 +38,9 @@
 
 macOS 11+, **Apple Silicon и Intel в одном бинарном файле**:
 
-- `build/plugins/macos-universal/DXM-088.vst3`
-- `build/plugins/macos-universal/DXM-088.component` — Audio Unit v2, тип `aumu`
-- `build/plugins/macos-universal/DXM-088.clap`
+- `build/plugins/dxm088-macos-universal/DXM-088.vst3`
+- `build/plugins/dxm088-macos-universal/DXM-088.component` — Audio Unit v2, тип `aumu`
+- `build/plugins/dxm088-macos-universal/DXM-088.clap`
 - `build/plugins/DXM-088-macOS-universal.zip`
 - `build/plugins/DXM-088-0.5.0-macOS-universal.pkg` — установщик с выбором VST3, AU и CLAP.
 

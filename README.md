@@ -9,6 +9,8 @@ a shared browser / plug-in editor.
 · [Plug-in manual](plugin/README.md)
 · [Attribution](NOTICE.md)
 
+![DXM-088 editor](docs/images/dxm088-desktop.png)
+
 ## Instrument
 
 - Six synth voices and seven tracks, with closed/open hi-hat choke.

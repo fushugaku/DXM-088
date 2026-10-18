@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 task_root="$(cd "$(dirname "$0")/.." && pwd)"
-task_source="$task_root/build/plugins/macos-universal"
+task_source="$task_root/build/plugins/dxm088-macos-universal"
 for task_pair in 'vst3:VST3' 'component:Components' 'clap:CLAP'; do
  task_ext=${task_pair%:*};task_folder=${task_pair#*:}
  task_dest="$HOME/Library/Audio/Plug-Ins/$task_folder/DXM-088.$task_ext"
@@ -13,4 +13,4 @@ for task_pair in 'vst3:VST3' 'component:Components' 'clap:CLAP'; do
  mkdir -p "$HOME/Library/Audio/Plug-Ins/$task_folder"
  ditto "$task_source/DXM-088.$task_ext" "$task_dest"
 done
-printf '%s\n' 'Installed LXR02 VST3 / AU / CLAP into ~/Library/Audio/Plug-Ins/'
+printf '%s\n' 'Installed DXM-088 VST3 / AU / CLAP into ~/Library/Audio/Plug-Ins/'

@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RELEASE = ROOT / 'build/plugins/macos-universal'
+RELEASE = ROOT / 'build/plugins/dxm088-macos-universal'
 FORMATS = [('vst3', 'VST3', 'VST3'), ('component', 'Components', 'Audio Unit v2'),
            ('clap', 'CLAP', 'CLAP')]
 PREFIX = 'io.github.fushugaku.DXM088.pkg'

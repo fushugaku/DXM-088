@@ -3,7 +3,7 @@
 import hashlib,json,shutil,subprocess
 from pathlib import Path
 root=Path(__file__).resolve().parent.parent
-release=root/'build/plugins/macos-universal'
+release=root/'build/plugins/dxm088-macos-universal'
 shutil.copy2(root/'plugin/README.md',release/'README.md')
 shutil.copy2(root/'plugin/SOURCES.json',release/'SOURCES.json')
 examples=release/'Examples';examples.mkdir(exist_ok=True)

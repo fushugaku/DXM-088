@@ -43,7 +43,7 @@ for name, path in [
         if path.is_file():
             shutil.copy2(path, notices / f'{name}-{path.name}')
 shutil.copy2(ROOT / '.deps/iplug2/WDL/license.txt', notices / 'WDL-license.txt')
-webview = (ROOT / '.deps/iplug2/IPlug/Extras/WebView/IPlugWebView.h').read_text()
+webview = (ROOT / '.deps/iplug2/IPlug/Extras/WebView/IPlugWebView.h').read_text(encoding='utf-8')
 (notices / 'iPlug2-WebView-MIT.txt').write_text(webview[webview.index('  MIT License'):webview.index('*/')].strip(' \n=') + '\n')
 cargo = subprocess.check_output(['rustup', 'which', '--toolchain', 'stable', 'cargo'], text=True).strip()
 metadata = json.loads(subprocess.check_output([cargo, 'metadata', '--locked', '--offline', '--format-version', '1', '--manifest-path', str(ROOT / 'plugin/engine/Cargo.toml')], text=True))

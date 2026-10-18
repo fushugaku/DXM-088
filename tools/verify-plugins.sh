@@ -4,10 +4,11 @@ task_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$task_root"
 export RUSTC="$(rustup which rustc)"
 export RUSTDOC="$(rustup which rustdoc)"
+export RUSTDOC="$(rustup which rustdoc)"
 cargo_bin="$(rustup which cargo)"
 "$cargo_bin" test --locked --release > artifacts/core-plugin-regression.log 2>&1
 "$cargo_bin" test --locked --release --manifest-path plugin/engine/Cargo.toml > artifacts/plugin-rust-tests.log 2>&1
-task_bundles="$task_root/build/plugins/macos-universal"
+task_bundles="$task_root/build/plugins/dxm088-macos-universal"
 case "$(uname -m)" in arm64) task_target=aarch64-apple-darwin;; x86_64) task_target=x86_64-apple-darwin;; esac
 task_library="plugin/engine/target/$task_target/release/liblxr02_plugin.a"
 for task_ext in vst3 component clap; do
