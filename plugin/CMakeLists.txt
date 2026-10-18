@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DXM-088 VERSION 0.6.0 LANGUAGES C CXX)
+project(DXM-088 VERSION 0.6.1 LANGUAGES C CXX)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(IPLUG2_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.deps/iplug2" CACHE PATH "iPlug2 SDK")
 set(IPLUG_DEPLOY_PLUGINS OFF CACHE BOOL "Install with tools/install-plugins.sh" FORCE)
@@ -20,6 +20,9 @@ elseif(WIN32)
   set(LXR_DIALOG file_dialog_win.cpp)
 endif()
 iplug_add_plugin(DXM-088 SOURCES LXR02.cpp LXR02.h engine.h ${LXR_DIALOG} WEB_RESOURCES ${LXR_WEB} UI WEBVIEW FORMATS ${LXR_FORMATS} LINK lxr-rust)
+# SDK translation units do not include the product config.h. Set these for the
+# entire target so the processor bus and controller mapping agree on 16 channels.
+target_compile_definitions(DXM-088-vst3 PRIVATE VST3_NUM_MIDI_IN_CHANS=16 VST3_NUM_CC_CHANS=16)
 if(APPLE)
   foreach(format vst3 clap au)
     # iPlug derives Objective-C symbols from the product name. Hyphens belong

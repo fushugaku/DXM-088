@@ -1,6 +1,27 @@
 {
-  "iPlug2": {"url":"https://github.com/iPlug2/iPlug2.git","commit":"d54f69050f517e43b941d88c2a170f0a840b9ee4"},
-  "VST3_SDK": {"url":"https://github.com/steinbergmedia/vst3sdk.git","commit":"3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96","submodules":["base","cmake","pluginterfaces","public.sdk"]},
-  "CLAP_SDK": {"url":"https://github.com/free-audio/clap.git","commit":"a47f6badb49d948fd009998f28309cdab78979c9"},
-  "CLAP_HELPERS": {"url":"https://github.com/free-audio/clap-helpers.git","commit":"29389e43489b1af44b654ef5a7b4ee0af4bbc13b"}
+  "iPlug2": {
+    "url": "https://github.com/iPlug2/iPlug2.git",
+    "commit": "d54f69050f517e43b941d88c2a170f0a840b9ee4",
+    "patches": [
+      "plugin/patches/iplug2-webview-keyboard.patch"
+    ]
+  },
+  "VST3_SDK": {
+    "url": "https://github.com/steinbergmedia/vst3sdk.git",
+    "commit": "3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96",
+    "submodules": [
+      "base",
+      "cmake",
+      "pluginterfaces",
+      "public.sdk"
+    ]
+  },
+  "CLAP_SDK": {
+    "url": "https://github.com/free-audio/clap.git",
+    "commit": "a47f6badb49d948fd009998f28309cdab78979c9"
+  },
+  "CLAP_HELPERS": {
+    "url": "https://github.com/free-audio/clap-helpers.git",
+    "commit": "29389e43489b1af44b654ef5a7b4ee0af4bbc13b"
+  }
 }

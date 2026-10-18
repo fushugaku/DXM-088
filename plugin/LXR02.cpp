@@ -109,6 +109,7 @@ void LXR02::ProcessBlock(sample**,sample** out,int nFrames){
   }
   int remain=0;for(int i=event;i<mMidiCount;i++){mMidi[i].mOffset-=nFrames;mMidi[remain++]=mMidi[i];}mMidiCount=remain;
   float s[20];lxrp_status(engine,s);for(int i=0;i<20;i++)mStatus[i].store(s[i],std::memory_order_relaxed);
+  mPreview.store(lxrp_preview(engine),std::memory_order_relaxed);
   if(lastFrames>0)for(int i=0;i<128;i++){int at=i*(lastFrames-1)/127;mScope[i].store((mAudio[at*2]+mAudio[at*2+1])*.5f,std::memory_order_relaxed);}
 }
 std::string LXR02::ProjectJSON() const {
@@ -157,7 +158,7 @@ void LXR02::OnIdle(){
   for(int p=0;p<kParams;p++){float v=(float)GetParam(p)->Value();if(v!=mUISent[p]){values.push_back({{"id",p},{"value",v}});mUISent[p]=v;}}
   if(!values.empty())SendJSONFromDelegate({{"type","parameters"},{"values",values}});
   nlohmann::json s; s["type"]="transport";s["pattern"]=mStatus[0].load();s["note"]=mStatus[1].load();s["left"]=mStatus[2].load();s["right"]=mStatus[3].load();s["bpm"]=mStatus[4].load();s["running"]=mStatus[5].load();
-  s["positions"]=nlohmann::json::array();for(int t=0;t<7;t++)s["positions"].push_back(mStatus[6+t].load());
+  s["preview"]=mPreview.load();s["positions"]=nlohmann::json::array();for(int t=0;t<7;t++)s["positions"].push_back(mStatus[6+t].load());
   s["meters"]=nlohmann::json::array();for(int t=0;t<7;t++)s["meters"].push_back(mStatus[13+t].load());
   s["wave"]=nlohmann::json::array();for(int t=0;t<128;t++)s["wave"].push_back(mScope[t].load());SendJSONFromDelegate(s);
 #endif
@@ -205,7 +206,7 @@ bool LXR02::OnMessage(int tag,int,int size,const void* data){
     Command command{};command.op=op->second;for(size_t i=0;i<c[1].size();i++){if(!c[1][i].is_number())return false;command.args[i]=c[1][i].get<double>();if(!std::isfinite(command.args[i]))return false;}
     lxrp_command(mModel,command.op,command.args.data());
     // Parameters travel through the host; the queue carries sequencer edits and pad triggers.
-    if(!full&&(command.op==2||command.op==3||command.op==4||command.op==5||command.op==12||command.op==13||command.op==14||command.op==16||command.op==17||command.op==18||command.op==19||command.op==21||command.op==22||command.op==23||command.op==24)){
+    if(!full&&(command.op==2||command.op==3||command.op==4||command.op==5||command.op==12||command.op==13||command.op==14||command.op==15||command.op==16||command.op==17||command.op==18||command.op==19||command.op==21||command.op==22||command.op==23||command.op==24)){
       command.revision=++mRevision;const auto w=mWrite.load(std::memory_order_relaxed);
       if(w-mRead.load(std::memory_order_acquire)<kQueue){mCommands[w%kQueue]=command;mWrite.store(w+1,std::memory_order_release);}else full=true;
     }

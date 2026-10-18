@@ -19,4 +19,10 @@ checkout('iPlug2',sdk,'iPlug2.cmake')
 checkout('VST3_SDK',sdk/'Dependencies/IPlug/VST3_SDK','pluginterfaces/vst/ivstaudioprocessor.h')
 checkout('CLAP_SDK',sdk/'Dependencies/IPlug/CLAP_SDK','include/clap/clap.h')
 checkout('CLAP_HELPERS',sdk/'Dependencies/IPlug/CLAP_HELPERS','include/clap/helpers/plugin.hh')
+for patch in sorted((ROOT/'plugin/patches').glob('*.patch')):
+    command=['git','-C',str(sdk),'apply']
+    if subprocess.run([*command,'--reverse','--check',str(patch)],capture_output=True).returncode==0:
+        continue
+    subprocess.run([*command,'--check',str(patch)],check=True)
+    subprocess.run([*command,str(patch)],check=True)
 print('Pinned iPlug2, VST3 and CLAP SDKs ready')

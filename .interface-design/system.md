@@ -57,3 +57,10 @@ the button row height. Selecting a bank retains the slot; incoming MIDI follows
 the active bank. Scene buttons show the same eight slots as the top row. MIDI
 names use C−2 = 0 through G8 = 127. Keep sample PCM and unedited bank slots out
 of routine undo snapshots.
+
+Native transport (0.6.1): Play / Space previews a pattern without an external
+MIDI note. MIDI takes priority, disabling the preview button while a note is held.
+Release of the last held note stops playback; saved projects never start preview
+automatically. Keep focused Length/Hits fields stable during grid updates and
+commit their displayed bounds on blur or Enter. Native WebView must pass keyboard
+events through WebKit/Cocoa instead of claiming unhandled keys.

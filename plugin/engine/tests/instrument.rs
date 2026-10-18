@@ -220,3 +220,44 @@ fn full_bank_fits_a_small_host_thread_stack() {
         assert_eq!(copied.engine.scenes.len(), 128);
     }).unwrap().join().unwrap();
 }
+
+#[test]
+fn preview_plays_without_midi_and_never_outlives_a_midi_gate() {
+    let mut i = Instrument::new(48000.);
+    i.transport(120., 10., false);
+    i.engine.immediate_pattern(127);
+    i.command(15, [0.; 8]);
+    render(&mut i, 6001);
+    assert!(i.preview && i.engine.playing);
+    assert_eq!(i.active_note, None);
+    assert_eq!(i.engine.positions[0], 1);
+    i.midi(0x9f, 0, 127);
+    assert!(!i.preview);
+    assert_eq!(i.engine.pattern, 0);
+    i.command(15, [0.; 8]);
+    assert!(!i.preview, "preview cannot take over a held MIDI note");
+    i.midi(0x8f, 0, 0);
+    render(&mut i, 1);
+    assert!(!i.engine.playing);
+    i.command(15, [0.; 8]);
+    i.command(14, [0.; 8]);
+    assert!(!i.preview && !i.engine.playing);
+}
+
+#[test]
+fn project_edits_keep_preview_clock_but_saving_does_not_enable_autoplay() {
+    let mut old = Instrument::new(48000.);
+    old.command(15, [0.; 8]);
+    render(&mut old, 6001);
+    let mut edited = old.copy_project(48000.);
+    edited.inherit_transport(&old);
+    assert!(edited.preview);
+    render(&mut edited, 1);
+    assert_eq!(edited.engine.positions[0], 1);
+    let mut loaded = Instrument::new(48000.);
+    loaded.load(&edited.project()).unwrap();
+    assert!(!loaded.preview && loaded.active_note.is_none());
+    edited.transport(120., 1., true);
+    edited.transport(120., 1., false);
+    assert!(!edited.preview && !edited.engine.playing);
+}

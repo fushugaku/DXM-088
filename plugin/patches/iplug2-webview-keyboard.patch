@@ -1,0 +1,42 @@
+diff --git a/IPlug/Extras/WebView/IPlugWKWebView.mm b/IPlug/Extras/WebView/IPlugWKWebView.mm
+index a6ca144..9f5446c 100644
+--- a/IPlug/Extras/WebView/IPlugWKWebView.mm
++++ b/IPlug/Extras/WebView/IPlugWKWebView.mm
+@@ -121,25 +121,19 @@ - (BOOL)acceptsFirstResponder {
+ }
+ 
+ #ifdef OS_MAC
+-- (BOOL)performKeyEquivalent:(NSEvent *)event {
+-    if (([event modifierFlags] & NSEventModifierFlagCommand) && 
+-        !([event modifierFlags] & NSEventModifierFlagShift) && 
+-        !([event modifierFlags] & NSEventModifierFlagOption) && 
+-        !([event modifierFlags] & NSEventModifierFlagControl)) {
+-        
+-        NSString *characters = [event charactersIgnoringModifiers];
+-        if ([characters length] == 1) {
+-            unichar character = [characters characterAtIndex:0];
+-            if (character == 'q' || character == 'w' || character == 'h' || 
+-                character == 's' || character == 'a' || character == 'z' || 
+-                character == 'x' || character == 'c' || character == 'v' ||
+-                character == ',') {
+-                return NO;
+-            }
+-        }
+-    }
+-    
++- (BOOL)needsPanelToBecomeKey {
++    // Hosts can place the editor in a non-activating NSPanel. WebKit needs
++    // that panel's keyboard focus to edit fields and receive drum shortcuts.
+     return YES;
+ }
++
++- (BOOL)performKeyEquivalent:(NSEvent *)event {
++    // Plain keys must reach keyDown/KeyUp on the focused WebKit content view.
++    // Claiming them here silently discards numeric input and drum shortcuts.
++    if (!([event modifierFlags] & NSEventModifierFlagCommand))
++        return NO;
++    return [super performKeyEquivalent:event];
++}
++
+ #endif
+ @end

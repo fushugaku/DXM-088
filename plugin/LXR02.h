@@ -58,6 +58,7 @@ private:
   std::array<iplug::IMidiMsg,4096> mMidi{};
   int mMidiCount=0;
   std::atomic<bool> mOverflow{false},mProjectDirty{false},mEditorReady{false};
+  std::atomic<bool> mPreview{false};
   std::atomic<float> mRate{44100.f};
   std::array<float,8192> mAudio{};
   std::array<float,kParams> mParamCache{};

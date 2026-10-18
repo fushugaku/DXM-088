@@ -40,6 +40,7 @@ fn midi_transport_and_render_allocate_nothing() {
     let mut replacement=i.copy_project(96000.);
     let mut audio = [0.; 2048];
     TRACK.store(true, Ordering::SeqCst);
+    i.command(15, [0.; 8]);i.render(&mut audio);i.command(14, [0.; 8]);
     for k in 0..128 {
         i.transport(60. + k as f64 * 9., k as f64 * 0.25, true);
         i.midi(0x90, k, 100);

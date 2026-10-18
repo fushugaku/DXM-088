@@ -42,6 +42,10 @@ int main(int argc,char** argv) {
     auto component=owned(raw); REQUIRE(component->initialize(&host)==kResultOk);
     FUnknownPtr<IAudioProcessor> processor(component); FUnknownPtr<IEditController> controller(component);
     REQUIRE(processor&&controller);
+    BusInfo midiBus{};
+    REQUIRE(component->getBusInfo(kEvent,kInput,0,midiBus)==kResultOk);
+    REQUIRE(midiBus.channelCount==16);
+    REQUIRE(component->activateBus(kEvent,kInput,0,true)==kResultOk);
     SpeakerArrangement stereo=SpeakerArr::kStereo;
     REQUIRE(processor->setBusArrangements(nullptr,0,&stereo,1)==kResultOk);
 
@@ -68,7 +72,7 @@ int main(int argc,char** argv) {
         data.inputs=nullptr;data.outputs=&output;data.inputParameterChanges=&changes;data.processContext=&context;
         std::fill(expected.begin(),expected.end(),0.f);
         lxrp_transport(reference,bpm,beat,playing);EventList events;data.inputEvents=&events;
-        if(n==128){Event e{};e.type=Event::kNoteOnEvent;e.sampleOffset=17;e.noteOn.channel=0;e.noteOn.pitch=24+phase;e.noteOn.velocity=100.f/127.f;e.noteOn.noteId=-1;REQUIRE(events.addEvent(e)==kResultOk);lxrp_process(reference,expected.data(),17);lxrp_midi(reference,0x90,24+phase,100);lxrp_process(reference,expected.data()+34,n-17);}
+        if(n==128){Event e{};e.type=Event::kNoteOnEvent;e.sampleOffset=17;e.noteOn.channel=phase*3;e.noteOn.pitch=24+phase;e.noteOn.velocity=100.f/127.f;e.noteOn.noteId=-1;REQUIRE(events.addEvent(e)==kResultOk);lxrp_process(reference,expected.data(),17);lxrp_midi(reference,0x90|(phase*3),24+phase,100);lxrp_process(reference,expected.data()+34,n-17);}
         else lxrp_process(reference,expected.data(),n);
         REQUIRE(processor->process(data)==kResultOk);
         for(int i=0;i<n;i++)for(int c=0;c<2;c++) {

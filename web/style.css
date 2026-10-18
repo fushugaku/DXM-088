@@ -66,3 +66,6 @@
 #step-dialog .field-label,#step-dialog .micro-label{font-size:10px}#step-dialog .select-trigger{font-size:11px}#step-dialog .lock-value output{font-size:10px}.feature-body input:disabled{opacity:.35}.feature-body .field-label{font-size:10px}
 
 #pattern-bank .dropdown{min-width:56px;width:56px}#pattern-bank .select-trigger{padding-inline:10px;font-family:var(--mono,monospace);gap:8px}#pattern-bank{flex:none}.pattern-control{gap:8px}.pattern-control button{min-height:36px}
+
+.number-control{display:inline-flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:3px;background:var(--inset)}.number-control input[type=number]{border:0;background:transparent;border-radius:0}.number-control button{min-width:24px;padding:0;min-height:30px;color:var(--secondary);font:12px var(--mono)}.number-control button:hover{color:var(--amber)}.sequence-footer .number-control input{width:34px;height:30px}.sequence-footer .number-control{height:32px}
+@media(max-width:650px){.sequence-footer .number-control,.number-control button{height:44px;min-height:44px}.sequence-footer .number-control input{height:42px}.number-control button{min-width:28px}.sequence-footer .hits-control{margin-left:0}.sequence-footer .division-control .select-trigger{min-height:44px;height:44px}}

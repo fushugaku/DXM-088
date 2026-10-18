@@ -78,6 +78,7 @@ pub struct Instrument {
     serial: u64,
     pub active_note: Option<u8>,
     pub base_note: u8,
+    pub preview: bool,
     beat: f64,
     bpm: f64,
     host_running: bool,
@@ -101,6 +102,7 @@ impl Instrument {
             serial: 0,
             active_note: None,
             base_note: 0,
+            preview: false,
             beat: 0.,
             bpm: 128.,
             host_running: false,
@@ -156,8 +158,11 @@ impl Instrument {
             self.wheels = old.wheels;
             self.serial = old.serial;
             self.active_note = old.active_note;
+            self.preview = old.preview;
             if self.active_note.is_some() {
                 self.engine.immediate_pattern(old.engine.pattern);
+            }
+            if self.active_note.is_some() || self.preview {
                 self.engine.inherit_clock(&old.engine);
             }
         }
@@ -176,6 +181,9 @@ impl Instrument {
             self.engine.modwheel = self.wheels[i / 128] as f32 / 127.;
         }
         let current = current_index.map(|i| (i % 128) as u8);
+        if current.is_some() {
+            self.preview = false;
+        }
         if current != self.active_note {
             let was_idle = self.active_note.is_none();
             self.active_note = current;
@@ -240,6 +248,7 @@ impl Instrument {
     pub fn all_off(&mut self) {
         self.held.fill(0);
         self.active_note = None;
+        self.preview = false;
         self.last_tick = None;
         self.engine.stop();
     }
@@ -269,9 +278,9 @@ impl Instrument {
                 n,
                 self.beat,
                 self.bpm,
-                self.active_note.is_some(),
+                self.active_note.is_some() || self.preview,
             ));
-            if self.host_running || self.active_note.is_some() {
+            if self.host_running || self.active_note.is_some() || self.preview {
                 self.beat += n as f64 * step;
             }
         }
@@ -362,6 +371,16 @@ impl Instrument {
                 self.engine.panic();
             }
             14 => self.all_off(),
+            15 => {
+                if self.active_note.is_none() {
+                    self.preview = true;
+                    if !self.host_running {
+                        self.beat = 0.;
+                    }
+                    self.engine.seek_clock(self.beat);
+                    self.engine.play();
+                }
+            }
             16 => self.engine.generate(u(0), u(1), u(2), u(3), u(4)),
             17 => self
                 .engine
@@ -608,6 +627,10 @@ pub unsafe extern "C" fn lxrp_status(h: *mut c_void, out: *mut f32) {
         a[6 + t] = i.engine.positions[t] as f32;
         a[13 + t] = i.engine.meters[t];
     }
+}
+#[no_mangle]
+pub unsafe extern "C" fn lxrp_preview(h: *mut c_void) -> bool {
+    instrument(h).preview
 }
 #[no_mangle]
 pub unsafe extern "C" fn lxrp_json(h: *mut c_void, out: *mut u8, capacity: usize) -> usize {

@@ -32,6 +32,10 @@ on the next 1/16, or on the next 4/4 bar. The sequencer follows the host tempo,
 PPQ, seeking and loops. Octave names vary by DAW; MIDI numbers are unambiguous.
 The bank selector shows eight slots at a time and follows incoming MIDI notes.
 The **A01** field rotates the mapping while keeping all 128 notes available.
+**Play / Space** previews the selected pattern without a MIDI clip. A held MIDI
+note takes over; releasing the last note stops the sequencer. Keyboard shortcuts
+A S D F G H J audition individual voices when the editor has focus. VST3 accepts
+all 16 MIDI channels.
 
 DXM-088 is the new name of the earlier local LXR02 Rust instrument. Existing
 format IDs, parameter IDs and project data remain compatible. Avoid installing
