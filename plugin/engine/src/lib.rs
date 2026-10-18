@@ -92,6 +92,8 @@ pub struct Instrument {
     last_tick: Option<i64>,
     name: String,
     kit: usize,
+    kit_preset: Option<Value>,
+    pattern_memory: bool,
     velocities: [u8; 2048],
     pressures: [u8; 16],
     wheels: [u8; 16],
@@ -119,6 +121,8 @@ impl Instrument {
             last_tick: None,
             name: "Session 01".into(),
             kit: 0,
+            kit_preset: None,
+            pattern_memory: false,
             velocities: [127; 2048],
             pressures: [0; 16],
             wheels: [0; 16],
@@ -140,6 +144,8 @@ impl Instrument {
         n.engine.immediate_pattern(self.engine.pattern);
         n.name = self.name.clone();
         n.kit = self.kit;
+        n.kit_preset = self.kit_preset.clone();
+        n.pattern_memory = self.pattern_memory;
         n.engine
             .scenes
             .copy_from_slice(self.engine.scenes.as_slice());
@@ -446,6 +452,7 @@ impl Instrument {
             10 => self.engine.set_morph(f(0), u(1)),
             11 => {
                 self.kit = u(0).min(4);
+                self.kit_preset = None;
                 self.engine.load_kit(self.kit);
             }
             12 => self.engine.trigger(u(0), f(1), a[2] as i32),
@@ -495,6 +502,40 @@ impl Instrument {
             24 => self
                 .engine
                 .sample_settings(u(0), f(1), f(2), f(3), f(4), f(5), u(6) != 0),
+            25..=28 if u(0) < PATTERNS => {
+                let p = u(0);
+                let scene = &mut self.engine.scenes[p];
+                match op {
+                    25 if u(1) < 6 && u(2) < 39 => {
+                        scene.params[u(1)][u(2)] =
+                            lxr02::params::constrain(u(2), f(3)).unwrap_or(scene.params[u(1)][u(2)])
+                    }
+                    26 if u(1) < 7 => match u(2) {
+                        0 => scene.levels[u(1)] = f(3).clamp(0., 1.25),
+                        1 => scene.muted[u(1)] = f(3) >= 0.5,
+                        2 => scene.solo[u(1)] = f(3) >= 0.5,
+                        _ => {}
+                    },
+                    27 if u(1) < 15 => {
+                        let (min, max, _) = range(234 + u(1));
+                        scene.fx[u(1)] = f(2).clamp(min, max);
+                    }
+                    28 => match u(1) {
+                        0..=3 => scene.macros[u(1)] = f(2).clamp(0., 1.),
+                        4 => scene.morph = f(2).clamp(0., 1.),
+                        5 => scene.morph_target = u(2).min(4),
+                        _ => {}
+                    },
+                    _ => {}
+                }
+                if p == self.engine.pattern {
+                    if op == 25 && u(1) < 6 && u(2) < 39 {
+                        self.engine.set_param(u(1), u(2), f(3));
+                    } else {
+                        self.engine.refresh_scene();
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -503,6 +544,8 @@ impl Instrument {
         let patterns:Vec<_>=e.patterns.iter().map(|p|json!({"lengths":p.tracks.map(|t|t.length),"divisions":p.tracks.map(|t|t.division),"delays":p.tracks.map(|t|t.delay),"grooves":p.tracks.map(|t|t.groove),"grooveAmounts":p.tracks.map(|t|t.groove_amount),"tracks":p.tracks.iter().map(|t|t.steps.iter().map(|s|json!({"v":s.velocity,"prob":s.probability,"note":s.note,"ratchet":s.ratchet,"micro":s.micro,"condition":s.condition,"every":s.every,"phase":s.phase,"locks":s.locks.map(|l|json!([l.param,l.value]))})).collect::<Vec<_>>()).collect::<Vec<_>>()})).collect();
         let mut j = json!({"format":"lxr02-web","version":4,"name":self.name,"kit":self.kit,"bpm":e.bpm,"swing":e.swing,"pattern":e.pattern,"params":e.params.map(|p|p.to_vec()),"patterns":patterns,"levels":e.levels,"muted":e.muted,"solo":e.solo,"fx":(234..249).map(|p|self.get(p)).collect::<Vec<_>>(),"morph":e.global_morph[0],"morphTarget":e.global_morph[1],"plugin":{"version":2,"baseNote":self.base_note,"nativeFileDrag":cfg!(target_os="macos")}});
         j["plugin"] = json!({"version":3,"baseNote":self.base_note,"midiMode":self.midi_mode,"outputMode":self.output_mode,"drumNotes":self.drum_notes,"nativeFileDrag":cfg!(target_os="macos")});
+        j["kitPreset"] = self.kit_preset.clone().unwrap_or(Value::Null);
+        j["plugin"]["patternMemory"] = json!(self.pattern_memory);
         self.extensions(&mut j);
         j
     }
@@ -519,6 +562,8 @@ impl Instrument {
             .take(60)
             .collect();
         n.kit = j["kit"].as_u64()?.min(4) as usize;
+        n.kit_preset = kit_preset(&j["kitPreset"]);
+        n.pattern_memory = j["plugin"]["patternMemory"].as_bool().unwrap_or(false);
         let num = |v: &Value, min: f64, max: f64| -> Option<f32> {
             let x = v.as_f64()?;
             (x.is_finite() && x >= min - 0.00001 && x <= max + 0.00001)
@@ -647,6 +692,18 @@ impl Instrument {
         Some(())
     }
 }
+fn kit_preset(value: &Value) -> Option<Value> {
+    let id = value["id"].as_str()?;
+    let name = value["name"].as_str()?;
+    if id.is_empty()
+        || id.len() > 64
+        || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
+        || name.trim().is_empty()
+    {
+        return None;
+    }
+    Some(json!({"id":id,"name":name.chars().take(60).collect::<String>()}))
+}
 pub fn range(p: usize) -> (f32, f32, bool) {
     match p {
         0..234 => (MIN[p % 39], MAX[p % 39], DISCRETE.contains(&(p % 39))),
@@ -740,6 +797,10 @@ pub unsafe extern "C" fn lxrp_status(h: *mut c_void, out: *mut f32) {
 #[no_mangle]
 pub unsafe extern "C" fn lxrp_preview(h: *mut c_void) -> bool {
     instrument(h).preview
+}
+#[no_mangle]
+pub unsafe extern "C" fn lxrp_scene_enabled(h: *mut c_void, p: u32) -> bool {
+    (p as usize) < PATTERNS && instrument(h).engine.scenes[p as usize].enabled
 }
 #[no_mangle]
 pub unsafe extern "C" fn lxrp_json(h: *mut c_void, out: *mut u8, capacity: usize) -> usize {
@@ -839,6 +900,9 @@ pub unsafe extern "C" fn lxrp_labels(h: *mut c_void, data: *const u8, size: usiz
     }
     if let Ok(j) = serde_json::from_slice::<Value>(slice::from_raw_parts(data, size)) {
         let i = instrument(h);
+        if j.get("kitPreset").is_some() {
+            i.kit_preset = kit_preset(&j["kitPreset"]);
+        }
         if let Some(names) = j["macroNames"].as_array() {
             if names.len() == 4 {
                 for n in 0..4 {

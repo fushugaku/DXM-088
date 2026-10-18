@@ -5,6 +5,9 @@ cd "$task_root"
 export RUSTC="$(rustup which rustc)"
 export RUSTDOC="$(rustup which rustdoc)"
 cargo_bin="$(rustup which cargo)"
+clang++ -std=c++17 -O2 -I .deps/iplug2/Dependencies/Extras/nlohmann tools/kit-store-tests.cpp -o target/kit-store-tests
+./target/kit-store-tests
+node tools/verify-kit-library.mjs
 "$cargo_bin" test --locked > artifacts/core-plugin-regression.log 2>&1
 "$cargo_bin" test --locked --manifest-path plugin/engine/Cargo.toml > artifacts/plugin-rust-tests.log 2>&1
 task_bundles="$task_root/build/plugins/dxm088-macos-universal"

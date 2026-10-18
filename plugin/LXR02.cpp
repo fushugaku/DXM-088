@@ -1,6 +1,7 @@
 // Host formats and WebView bridge. All sound and sequencer timing are in Rust.
 #include "LXR02.h"
 #include "IPlug_include_in_plug_src.h"
+#include "KitStore.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -58,13 +59,19 @@ LXR02::LXR02(const InstanceInfo& info):iplug::Plugin(info,MakeConfig(kParams,1))
 }
 void LXR02::Retire(Ready* r){if(r){lxrp_destroy(r->engine);delete r;}}
 LXR02::~LXR02(){Retire(mActive);Retire(mPending.exchange(nullptr));Retire(mRetired.exchange(nullptr));lxrp_destroy(mModel);}
-void LXR02::SyncModel() const {for(int p=0;p<kParams;p++){const float v=(float)GetParam(p)->Value();if(std::abs(v-lxrp_get(mModel,p))>1e-7)lxrp_set(mModel,p,v);}}
+void LXR02::SyncModel(int pattern) const {
+  // MIDI is rendered in the audio instance; editor/state edits belong to the
+  // displayed slot, not whichever slot the model last selected manually.
+  if(pattern==-1&&!mPending.load()&&GetParam(283)->Value()<.5&&mStatus[1].load()>=0)pattern=(int)mStatus[0].load();
+  if(pattern>=0&&pattern<128){std::array<double,8> args{};args[0]=pattern;lxrp_command(mModel,2,args.data());}
+  for(int p=0;p<kParams;p++){const float v=(float)GetParam(p)->Value();if(std::abs(v-lxrp_get(mModel,p))>1e-7)lxrp_set(mModel,p,v);}
+}
 void LXR02::PublishModel(){
   auto* r=new Ready{lxrp_clone(mModel,mRate.load()),++mRevision};
   Retire(mPending.exchange(r,std::memory_order_acq_rel));
 }
 void LXR02::OnReset(){
-  std::lock_guard<std::mutex> guard(mModelMutex);mRate=(float)GetSampleRate();SyncModel();
+  std::lock_guard<std::mutex> guard(mModelMutex);mRate=(float)GetSampleRate();SyncModel(-2);
   Retire(mActive);mActive=new Ready{lxrp_clone(mModel,mRate),++mRevision};
   Retire(mPending.exchange(nullptr));Retire(mRetired.exchange(nullptr));
   for(int p=0;p<kParams;p++)mParamCache[p]=(float)GetParam(p)->Value();mMidiCount=0;
@@ -92,7 +99,7 @@ void LXR02::ProcessBlock(sample**,sample** out,int nFrames){
   if(!mActive){for(int c=0;c<kChannels;c++)if(IsChannelConnected(ERoute::kOutput,c))std::fill(out[c],out[c]+nFrames,0.);return;}
   auto* engine=mActive->engine;
   uint32_t read=mRead.load(std::memory_order_relaxed);const auto write=mWrite.load(std::memory_order_acquire);
-  while(read!=write){const auto& cmd=mCommands[read%kQueue];if(cmd.revision>mActive->revision)lxrp_command(engine,cmd.op,cmd.args.data());++read;}
+  while(read!=write){const auto& cmd=mCommands[read%kQueue];if(cmd.revision>mActive->revision){lxrp_command(engine,cmd.op,cmd.args.data());if(cmd.parameter>=0&&std::abs(GetParam(cmd.parameter)->Value()-cmd.value)<1e-6)mParamCache[cmd.parameter]=cmd.value;}++read;}
   mRead.store(read,std::memory_order_release);
   for(int p=0;p<kParams;p++){
     const float v=(float)GetParam(p)->Value();if(v!=mParamCache[p]){lxrp_set(engine,p,v);mParamCache[p]=v;}
@@ -140,7 +147,7 @@ int LXR02::UnserializeState(const IByteChunk& chunk,int pos){
   const int count=magic==0x4c585233?274:magic==0x4c585234?283:kParams;
   for(int p=0;p<count;p++){double v;pos=chunk.Get(&v,pos);if(pos<0||!std::isfinite(v))return -1;GetParam(p)->Set(v);}
   for(int p=count;p<kParams;p++)GetParam(p)->Set(lxrp_get(mModel,p));
-  SyncModel();PublishModel();mProjectDirty=true;return pos;
+  SyncModel(-2);PublishModel();mProjectDirty=true;return pos;
 }
 void LXR02::NotifyParams(){
   for(int p=0;p<kParams;p++){
@@ -192,7 +199,19 @@ bool LXR02::OnMessage(int tag,int,int size,const void* data){
     const auto paths=nlohmann::json(mExportPaths).dump();const bool started=lxr_drag_exports(iplug::WebViewEditorDelegate::mView,paths.c_str());if(!started)SendJSONFromDelegate({{"type","exportError"},{"message","Hold and drag the button, or use Save file."}});return started;
   }
 #endif
-  std::lock_guard<std::mutex> guard(mModelMutex);SyncModel();
+  if(j.value("type","")=="kitLibrary"){
+    const auto request=j.value("request",0u);
+    try{
+      dxm::KitStore store;const auto operation=j.value("operation","");nlohmann::json result;
+      if(operation=="list")result=store.list();
+      else if(operation=="get")result=store.get(j.at("id").get<std::string>());
+      else if(operation=="save"){store.save(j.at("kit"));result={{"id",j["kit"].at("id")}};}
+      else throw std::runtime_error("Unknown kit operation.");
+      SendJSONFromDelegate({{"type","kitLibrary"},{"request",request},{"ok",true},{"result",result}});
+    }catch(const std::exception&){SendJSONFromDelegate({{"type","kitLibrary"},{"request",request},{"ok",false},{"message","Kit could not be saved or loaded. Check the user kit folder."}});}
+    return true;
+  }
+  std::lock_guard<std::mutex> guard(mModelMutex);SyncModel(j.value("pattern",-1));
   if(j.value("type","")=="gesture"){
     if(!j["id"].is_number_unsigned()||!j["active"].is_boolean())return false;
     const auto id=j["id"].get<unsigned>();if(id>=kParams)return false;
@@ -200,7 +219,7 @@ bool LXR02::OnMessage(int tag,int,int size,const void* data){
       mUIGestures[id]=active;if(active)BeginInformHostOfParamChangeFromUI(id);else EndInformHostOfParamChangeFromUI(id);
     }return true;
   }
-  if(j.value("type","")=="meta"){const auto name=j.value("name",std::string("Session 01"));lxrp_meta(mModel,(const uint8_t*)name.data(),name.size(),j.value("kit",0));if(j.contains("labels")){const auto labels=j["labels"].dump();lxrp_labels(mModel,(const uint8_t*)labels.data(),labels.size());}return true;}
+  if(j.value("type","")=="meta"){const auto name=j.value("name",std::string("Session 01"));lxrp_meta(mModel,(const uint8_t*)name.data(),name.size(),j.value("kit",0));if(j.contains("labels")){const auto labels=j["labels"].dump();lxrp_labels(mModel,(const uint8_t*)labels.data(),labels.size());}DirtyParametersFromUI();return true;}
   if(j.value("type","")=="project"){
     const auto s=j["project"].dump();if(!lxrp_load(mModel,(const uint8_t*)s.data(),s.size()))return false;
     NotifyParams();PublishModel();DirtyParametersFromUI();return true;
@@ -212,15 +231,27 @@ bool LXR02::OnMessage(int tag,int,int size,const void* data){
   if(j.value("type","")!="commands"||!j["commands"].is_array()||j["commands"].size()>15000)return false;
   static const std::unordered_map<std::string,uint32_t> ops={{"lxr_param",0},{"lxr_tempo",1},{"lxr_pattern",2},{"lxr_length",3},{"lxr_set_step",4},{"lxr_set_lock",5},{"lxr_level",6},{"lxr_mute",7},{"lxr_solo",8},{"lxr_fx",9},{"lxr_morph",10},{"lxr_load_kit",11},{"lxr_trigger",12},{"lxr_panic",13},{"lxr_stop",14},{"lxr_play",15},{"lxr_generate",16},{"lxr_track_settings",17},{"lxr_step_extras",18},{"lxr_route",19},{"lxr_macro",20},{"lxr_performance",21},{"lxr_scene_capture",22},{"lxr_scene_enable",23},{"lxr_sample_settings",24}};
   bool full=j["commands"].size()>64;
+  const int pattern=j.value("pattern",-1);
+  auto enqueue=[&](Command command){command.revision=++mRevision;const auto w=mWrite.load(std::memory_order_relaxed);if(w-mRead.load(std::memory_order_acquire)<kQueue){mCommands[w%kQueue]=command;mWrite.store(w+1,std::memory_order_release);}else full=true;};
   for(const auto& c:j["commands"]){
     if(!c.is_array()||c.size()!=2||!c[0].is_string()||!c[1].is_array()||c[1].size()>8)return false;
     auto op=ops.find(c[0].get<std::string>());if(op==ops.end())return false;
     Command command{};command.op=op->second;for(size_t i=0;i<c[1].size();i++){if(!c[1][i].is_number())return false;command.args[i]=c[1][i].get<double>();if(!std::isfinite(command.args[i]))return false;}
     lxrp_command(mModel,command.op,command.args.data());
+    // A scene edit must reach that exact slot even when its physical value is
+    // equal to the last host value, or MIDI changes slot in the same block.
+    if(!full&&pattern>=0&&pattern<128&&lxrp_scene_enabled(mModel,pattern)){
+      auto scene=[&](uint32_t op,std::array<double,8> args,int parameter){if(parameter<0||parameter>=kParams)return;Command c{};c.op=op;c.args=args;c.parameter=parameter;c.value=lxrp_get(mModel,parameter);enqueue(c);};
+      const auto& a=command.args;
+      if(command.op==0){scene(25,{double(pattern),a[0],a[1],a[2]},int(a[0])*39+int(a[1]));continue;}
+      if(command.op>=6&&command.op<=8){scene(26,{double(pattern),a[0],double(command.op-6),a[1]},(command.op==6?249:command.op==7?256:263)+int(a[0]));continue;}
+      if(command.op==9){scene(27,{double(pattern),a[0],a[1]},234+int(a[0]));continue;}
+      if(command.op==10){scene(28,{double(pattern),4.,a[0]},271);scene(28,{double(pattern),5.,a[1]},272);continue;}
+      if(command.op==20){scene(28,{double(pattern),a[0],a[1]},274+int(a[0]));continue;}
+    }
     // Parameters travel through the host; the queue carries sequencer edits and pad triggers.
     if(!full&&(command.op==2||command.op==3||command.op==4||command.op==5||command.op==12||command.op==13||command.op==14||command.op==15||command.op==16||command.op==17||command.op==18||command.op==19||command.op==21||command.op==22||command.op==23||command.op==24)){
-      command.revision=++mRevision;const auto w=mWrite.load(std::memory_order_relaxed);
-      if(w-mRead.load(std::memory_order_acquire)<kQueue){mCommands[w%kQueue]=command;mWrite.store(w+1,std::memory_order_release);}else full=true;
+      enqueue(command);
     }
   }
   NotifyParams();if(full)PublishModel();DirtyParametersFromUI();return true;

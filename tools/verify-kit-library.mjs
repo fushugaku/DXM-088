@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {captureKit,applyKit} from '../web/kit-library.js';
+import {captureScene} from '../web/feature-state.js';
+const state=JSON.parse(await readFile(new URL('../examples/Polyrhythm Scenes.dxm088.json',import.meta.url)));
+state.pattern=36;state.scenes[36]=captureScene(state);state.scenes[36].params[0][0]=123;
+state.samples[0]={name:'Layer.wav',data:'AAA=',rate:44100,gain:1,tune:0,start:0,end:1,decay:1,replace:false};
+const kit=captureKit(state,'  Мой кит  ','kit-test');
+assert.equal(kit.name,'Мой кит');assert.equal(kit.sound.params[0][0],123);assert(!('patterns' in kit.sound));assert(!('plugin' in kit.sound));assert.equal(kit.sound.samples[0].data,'AAA=');
+const destination=structuredClone(state);destination.pattern=127;destination.scenes[127]=captureScene(destination);destination.patterns[127].lengths[0]=7;destination.plugin.midiMode=1;destination.plugin.drumNotes=[0,1,2,3,4,5,6];
+const loaded=applyKit(destination,kit,x=>structuredClone(x));
+assert.equal(loaded.params[0][0],123);assert.equal(loaded.scenes[127].params[0][0],123);assert.deepEqual(loaded.patterns,destination.patterns);assert.deepEqual(loaded.plugin,destination.plugin);assert.deepEqual(loaded.kitPreset,{id:'kit-test',name:'Мой кит'});assert.notEqual(loaded.samples,state.samples);
+assert.throws(()=>applyKit(destination,{...kit,id:'../escape'},x=>x));
+const extra=applyKit(destination,{...kit,sound:{...kit.sound,patterns:[],pattern:0,plugin:{midiMode:0}}},x=>x);assert.equal(extra.pattern,127);assert.deepEqual(extra.patterns,destination.patterns);assert.equal(extra.plugin.midiMode,1);
+console.log('PASS kit memory: effective scene sound, WAV layers, independent snapshots, rhythms and MIDI assignments preserved');

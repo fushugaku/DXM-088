@@ -15,6 +15,7 @@ void lxrp_process(void*,float*,uint32_t);
 void lxrp_process_multi(void*,float*,uint32_t);
 void lxrp_status(void*,float*);
 bool lxrp_preview(void*);
+bool lxrp_scene_enabled(void*,uint32_t);
 size_t lxrp_json(void*,uint8_t*,size_t);
 bool lxrp_load(void*,const uint8_t*,size_t);
 void lxrp_meta(void*,const uint8_t*,size_t,uint32_t);

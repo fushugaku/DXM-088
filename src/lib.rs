@@ -411,26 +411,30 @@ impl Engine {
             self.queued_pattern = None;
             self.pending_switch = None;
             self.clock_valid = false;
-            if self.scenes[pattern].enabled {
-                let scene = self.scenes[pattern];
-                for (i, value) in scene.fx.into_iter().enumerate() {
-                    self.set_fx_raw(i, value);
-                }
-                self.macros = scene.macros;
-                self.morph = scene.morph;
-                self.morph_target = scene.morph_target;
-            } else {
-                for (i, value) in self.global_fx.into_iter().enumerate() {
-                    self.set_fx_raw(i, value);
-                }
-                self.morph = self.global_morph[0];
-                self.morph_target = self.global_morph[1] as usize;
-                self.macros = self.global_macros;
-            }
             self.ratchets = [Ratchet::default(); TRACKS];
             self.locks = [[Lock::default(); 2]; VOICES];
-            self.refresh();
+            self.refresh_scene();
         }
+    }
+    /// Apply edited scene sound without restarting track clocks or ratchets.
+    pub fn refresh_scene(&mut self) {
+        if self.scenes[self.pattern].enabled {
+            let scene = self.scenes[self.pattern];
+            for (i, value) in scene.fx.into_iter().enumerate() {
+                self.set_fx_raw(i, value);
+            }
+            self.macros = scene.macros;
+            self.morph = scene.morph;
+            self.morph_target = scene.morph_target;
+        } else {
+            for (i, value) in self.global_fx.into_iter().enumerate() {
+                self.set_fx_raw(i, value);
+            }
+            self.morph = self.global_morph[0];
+            self.morph_target = self.global_morph[1] as usize;
+            self.macros = self.global_macros;
+        }
+        self.refresh();
     }
     /// No allocation in the render loop. Stereo interleaved float output.
     pub fn render(&mut self, frames: usize) -> &[f32] {
@@ -442,7 +446,6 @@ impl Engine {
     }
     fn render_clocked(&mut self, frames: usize, internal_clock: bool) -> &[f32] {
         let n = frames.min(MAX_FRAMES);
-        let has_solo = self.solo.iter().any(|s| *s);
         for frame in 0..n {
             if self.playing {
                 if internal_clock {
@@ -463,12 +466,12 @@ impl Engine {
                 }
             }
             let out = if self.resampler.bypass() {
-                self.dsp_frame(has_solo)
+                self.dsp_frame()
             } else {
                 self.resampler.phase += self.resampler.step;
                 while self.resampler.phase >= 1. {
                     self.resampler.phase -= 1.;
-                    let sample = self.dsp_frame(has_solo);
+                    let sample = self.dsp_frame();
                     self.resampler.push(sample);
                 }
                 self.resampler.output(if self.capture_stems {
@@ -496,7 +499,7 @@ impl Engine {
     pub fn stems(&self, frames: usize) -> &[f32] {
         &self.stem_output[..frames.min(MAX_FRAMES) * (OUTPUT_CHANNELS - 2)]
     }
-    fn dsp_frame(&mut self, has_solo: bool) -> [f32; OUTPUT_CHANNELS] {
+    fn dsp_frame(&mut self) -> [f32; OUTPUT_CHANNELS] {
         if self.mod_counter == 0 && self.routes.iter().any(|r| r.amount != 0.) {
             self.refresh();
         }
@@ -507,7 +510,7 @@ impl Engine {
         } else {
             (self.levels, self.muted, self.solo)
         };
-        let has_solo = has_solo || solo.iter().any(|s| *s);
+        let has_solo = solo.iter().any(|s| *s);
         for t in 0..TRACKS {
             let target = if muted[t] || (has_solo && !solo[t]) {
                 0.

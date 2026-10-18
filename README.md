@@ -25,6 +25,18 @@ a shared browser / plug-in editor.
 - Pattern-gate or direct drum MIDI modes, with seven configurable drum notes.
 - Main stereo mix or seven individual stereo drum outputs in VST3, AU and CLAP.
 - 292 host automation parameters and a local WebView editor with no server dependency.
+- Save and update personal kits in the shared AU / VST3 / CLAP kit library, including sound, mix, FX and WAV layers.
+
+**Save kit** stores a named kit directly in **KIT → My kits**. **Update kit** replaces
+that saved kit; **Save as new** creates another. The native library is shared across
+instances and formats in `~/Library/Application Support/DXM-088/Kits` on macOS or
+`%APPDATA%\DXM-088\Kits` on Windows. DAW projects embed their sound and samples,
+so they also open on machines without the saved kit library. Browser kits use IndexedDB.
+
+In Patterns mode, edits made while holding a MIDI note remain in its pattern.
+The first edit captures independent sound/mix scenes for the bank, keeping other
+patterns' sounds intact. Rhythm, timing, locks, sound and FX return when that note
+is played again and are retained in the saved DAW project. Existing scenes remain intact.
 
 In **MIDI → Patterns**, every MIDI note **0–127 (C−2–G8)** selects its own pattern and plays while held.
 New projects map **0 → A01**, **7 → A08**, **8 → B01**, **127 → P08**.

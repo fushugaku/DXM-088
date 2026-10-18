@@ -4,7 +4,7 @@ import {upgradePatternBank} from './pattern-bank.js';
 // when the original DSP replaced the initial reconstruction.
 export const FX_DEFAULTS=[0,0.22,0.25,0.35,0.55,0.25,0.8,0,1,0,0.25,0.5,0.75,4,1];
 export const DEFAULT_DRUM_NOTES=[36,45,47,38,49,42,46];
-export function defaultPlugin(){return {version:3,baseNote:0,midiMode:0,outputMode:0,drumNotes:[...DEFAULT_DRUM_NOTES]};}
+export function defaultPlugin(){return {version:3,baseNote:0,midiMode:0,outputMode:0,drumNotes:[...DEFAULT_DRUM_NOTES],patternMemory:false};}
 export function migrateProject(input){
  if(input?.format!=='lxr02-web'||input.version!==1)return upgradePatternBank(upgradeFeatures(input));
  const s=structuredClone(input);

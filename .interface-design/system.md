@@ -73,3 +73,11 @@ Keep note fields stable during host updates. On phones the switches stack and
 note assignments form three columns with 44px controls. A single conditional
 line explains that Separate bypasses master FX and silences Mix, avoiding doubled
 audio when the seven named stereo buses feed DAW tracks.
+
+Kit memory (0.8): Save kit sits beside the kit selector, sharing its 36px height.
+The selector groups Factory / My kits; saved project identities absent from the
+local library appear under In this project. A compact name dialog offers Update
+kit and Save as new. Errors stay inside the dialog. On phones the kit row spans
+the transport width below the pattern buttons, with 44px controls. Keep rhythms
+and MIDI routing outside kit presets. MIDI pattern edits initialize independent
+sound scenes and retain the note-selected slot through save/reopen.
