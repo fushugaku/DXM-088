@@ -1,7 +1,7 @@
-use lxr02::{params::*, sequencer::Pattern, Engine};
+use lxr02::{params::*, Engine};
 fn blank() -> Engine {
     let mut e = Engine::new(48000.);
-    e.patterns = Box::new([Pattern::default(); 8]);
+    e.patterns = lxr02::sequencer::blank_patterns();
     e.tempo(120., 0.);
     e
 }

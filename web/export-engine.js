@@ -3,7 +3,7 @@ const sleep=()=>new Promise(r=>setTimeout(r,0));
 export async function renderPattern(module,commands,state,{beats=16,track=null,audio=true,onProgress=()=>{}}={}){
  const e=new WebAssembly.Instance(module,{}).exports,sr=44100;e.lxr_init(sr);
  for(const [fn,args] of commands)e[fn](...args);uploadSamples(e,state.samples);
- if(track!==null){for(let t=0;t<7;t++){e.lxr_solo(t,t===track?1:0);for(let p=0;p<8;p++)if(state.scenes[p])e.lxr_scene_mix(p,t,2,t===track?1:0);}}
+ if(track!==null){for(let t=0;t<7;t++){e.lxr_solo(t,t===track?1:0);for(let p=0;p<state.scenes.length;p++)if(state.scenes[p])e.lxr_scene_mix(p,t,2,t===track?1:0);}}
  const music=Math.round(beats*60/state.bpm*sr),frames=music+(audio?sr*2:0),pcm=audio?new Float32Array(frames*2):null,hits=[];
  e.lxr_events_clear();e.lxr_play();let offset=0,blocks=0,view;
  while(offset<frames){

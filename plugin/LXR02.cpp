@@ -30,7 +30,7 @@ LXR02::LXR02(const InstanceInfo& info):iplug::Plugin(info,MakeConfig(kParams,1))
   }
   mParamCache.fill(std::numeric_limits<float>::quiet_NaN());
 #ifdef WEBVIEW_EDITOR_DELEGATE
-  SetMaxJSStringLength(64000000);
+  SetMaxJSStringLength(128000000);
   mEditorInitFunc=[this](){
 #ifdef OS_WIN
     // Resolve from this module, never from the DAW's working directory.
@@ -120,7 +120,7 @@ bool LXR02::SerializeState(IByteChunk& chunk) const {
 }
 int LXR02::UnserializeState(const IByteChunk& chunk,int pos){
   uint32_t magic=0;int size=0;pos=chunk.Get(&magic,pos);if(pos<0||(magic!=0x4c585233&&magic!=0x4c585234))return -1;
-  pos=chunk.Get(&size,pos);if(pos<0||size<=0||size>32000000||size>chunk.Size()-pos)return -1;
+  pos=chunk.Get(&size,pos);if(pos<0||size<=0||size>64000000||size>chunk.Size()-pos)return -1;
   std::string s(size,'\0');pos=chunk.GetBytes(s.data(),size,pos);if(pos<0)return -1;
   std::lock_guard<std::mutex> guard(mModelMutex);
   if(!lxrp_load(mModel,(const uint8_t*)s.data(),s.size()))return -1;
@@ -164,7 +164,7 @@ void LXR02::OnIdle(){
 }
 bool LXR02::OnMessage(int tag,int,int size,const void* data){
   if(tag==101){mUISent.fill(std::numeric_limits<float>::quiet_NaN());mEditorReady=true;mProjectDirty=true;return true;}
-  if(tag!=100||size<=0||size>32000000)return false;
+  if(tag!=100||size<=0||size>64000000)return false;
   auto j=nlohmann::json::parse((const char*)data,(const char*)data+size,nullptr,false);if(j.is_discarded())return false;
 #ifdef OS_MAC
   if(j.value("type","")=="prepareFiles"){

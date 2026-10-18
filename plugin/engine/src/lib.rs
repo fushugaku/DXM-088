@@ -1,5 +1,5 @@
 //! Per-instance instrument, host clock and MIDI gate. The audio path allocates nothing.
-use lxr02::{params::*, Engine, MAX_FRAMES};
+use lxr02::{params::*, sequencer::PATTERNS, Engine, MAX_FRAMES};
 use serde_json::{json, Value};
 use std::{
     ffi::{c_char, c_void},
@@ -100,7 +100,7 @@ impl Instrument {
             order: [0; 2048],
             serial: 0,
             active_note: None,
-            base_note: 24,
+            base_note: 0,
             beat: 0.,
             bpm: 128.,
             host_running: false,
@@ -186,11 +186,11 @@ impl Instrument {
                         self.beat = 0.;
                     }
                     self.engine
-                        .immediate_pattern((note - self.base_note) as usize);
+                        .immediate_pattern(note.wrapping_sub(self.base_note) as usize % PATTERNS);
                     self.engine.seek_clock(self.beat);
                     self.engine.play();
                 } else {
-                    self.engine.select_pattern((note - self.base_note) as usize);
+                    self.engine.select_pattern(note.wrapping_sub(self.base_note) as usize % PATTERNS);
                 }
             } else {
                 self.engine.stop();
@@ -203,9 +203,6 @@ impl Instrument {
         let at = channel * 128 + key as usize;
         match status & 0xf0 {
             0x90 if value > 0 => {
-                if key < self.base_note || key >= self.base_note + 8 {
-                    return;
-                }
                 self.serial = self.serial.wrapping_add(1);
                 self.held[at] = self.held[at].saturating_add(1);
                 self.order[at] = self.serial;
@@ -388,7 +385,7 @@ impl Instrument {
             },
             22 => self.engine.capture_scene(u(0), true),
             23 => {
-                if u(0) < 8 {
+                if u(0) < PATTERNS {
                     self.engine.scenes[u(0)].enabled = u(1) != 0;
                     self.engine.immediate_pattern(self.engine.pattern);
                 }
@@ -402,12 +399,12 @@ impl Instrument {
     pub fn project(&self) -> Value {
         let e = &self.engine;
         let patterns:Vec<_>=e.patterns.iter().map(|p|json!({"lengths":p.tracks.map(|t|t.length),"divisions":p.tracks.map(|t|t.division),"delays":p.tracks.map(|t|t.delay),"grooves":p.tracks.map(|t|t.groove),"grooveAmounts":p.tracks.map(|t|t.groove_amount),"tracks":p.tracks.iter().map(|t|t.steps.iter().map(|s|json!({"v":s.velocity,"prob":s.probability,"note":s.note,"ratchet":s.ratchet,"micro":s.micro,"condition":s.condition,"every":s.every,"phase":s.phase,"locks":s.locks.map(|l|json!([l.param,l.value]))})).collect::<Vec<_>>()).collect::<Vec<_>>()})).collect();
-        let mut j = json!({"format":"lxr02-web","version":3,"name":self.name,"kit":self.kit,"bpm":e.bpm,"swing":e.swing,"pattern":e.pattern,"params":e.params.map(|p|p.to_vec()),"patterns":patterns,"levels":e.levels,"muted":e.muted,"solo":e.solo,"fx":(234..249).map(|p|self.get(p)).collect::<Vec<_>>(),"morph":e.global_morph[0],"morphTarget":e.global_morph[1],"plugin":{"version":1,"baseNote":self.base_note,"nativeFileDrag":cfg!(target_os="macos")}});
+        let mut j = json!({"format":"lxr02-web","version":4,"name":self.name,"kit":self.kit,"bpm":e.bpm,"swing":e.swing,"pattern":e.pattern,"params":e.params.map(|p|p.to_vec()),"patterns":patterns,"levels":e.levels,"muted":e.muted,"solo":e.solo,"fx":(234..249).map(|p|self.get(p)).collect::<Vec<_>>(),"morph":e.global_morph[0],"morphTarget":e.global_morph[1],"plugin":{"version":2,"baseNote":self.base_note,"nativeFileDrag":cfg!(target_os="macos")}});
         self.extensions(&mut j);
         j
     }
     pub fn load(&mut self, j: &Value) -> Option<()> {
-        if j["format"] != "lxr02-web" || (j["version"] != 2 && j["version"] != 3) {
+        if j["format"] != "lxr02-web" || ![2, 3, 4].contains(&j["version"].as_u64()?) {
             return None;
         }
         // Parse and validate into a separate instance: a malformed state never partially mutates a project.
@@ -424,7 +421,8 @@ impl Instrument {
             (x.is_finite() && x >= min - 0.00001 && x <= max + 0.00001)
                 .then_some(x.clamp(min, max) as f32)
         };
-        if j["params"].as_array()?.len() != 6 || j["patterns"].as_array()?.len() != 8 {
+        let count = if j["version"] == 4 { PATTERNS } else { 8 };
+        if j["params"].as_array()?.len() != 6 || j["patterns"].as_array()?.len() != count {
             return None;
         }
         for v in 0..6 {
@@ -436,7 +434,7 @@ impl Instrument {
                     .set_param(v, p, num(&j["params"][v][p], MIN[p] as f64, MAX[p] as f64)?);
             }
         }
-        for p in 0..8 {
+        for p in 0..count {
             let pattern = &j["patterns"][p];
             if pattern["lengths"].as_array()?.len() != 7 || pattern["tracks"].as_array()?.len() != 7
             {
@@ -508,13 +506,19 @@ impl Instrument {
         n.engine
             .tempo(num(&j["bpm"], 1., 1000.)?, num(&j["swing"], 0., 0.5)?);
         n.engine
-            .immediate_pattern(num(&j["pattern"], 0., 7.)? as usize);
+            .immediate_pattern(num(&j["pattern"], 0., (count - 1) as f64)? as usize);
         n.engine.set_morph(
             num(&j["morph"], 0., 1.)?,
             num(&j["morphTarget"], 0., 4.)? as usize,
         );
-        n.set(273, j["plugin"]["baseNote"].as_f64().unwrap_or(24.) as f32);
+        let default_origin = if j["version"] == 4 { 0. } else { 24. };
+        n.set(273, j["plugin"]["baseNote"].as_f64().unwrap_or(default_origin) as f32);
         n.load_extensions(j)?;
+        // Legacy MIDI clips retain their origin and original eight patterns.
+        for p in count..PATTERNS {
+            n.engine.patterns[p] = n.engine.patterns[p % count];
+            n.engine.scenes[p] = n.engine.scenes[p % count];
+        }
         for t in 0..7 {
             if n.engine.samples[t].pcm.as_ref() == self.engine.samples[t].pcm.as_ref() {
                 n.engine.samples[t].pcm = self.engine.samples[t].pcm.clone();
@@ -615,7 +619,7 @@ pub unsafe extern "C" fn lxrp_json(h: *mut c_void, out: *mut u8, capacity: usize
 }
 #[no_mangle]
 pub unsafe extern "C" fn lxrp_load(h: *mut c_void, data: *const u8, size: usize) -> bool {
-    if size > 32_000_000 {
+    if size > 64_000_000 {
         return false;
     }
     serde_json::from_slice::<Value>(slice::from_raw_parts(data, size))
@@ -642,7 +646,7 @@ pub unsafe extern "C" fn lxrp_info(p: u32, name: *mut c_char, capacity: usize, l
         270 => "Swing".into(),
         271 => "Morph".into(),
         272 => "Morph target".into(),
-        273 => "Pattern base MIDI note".into(),
+        273 => "A01 MIDI note".into(),
         274..278 => format!("Macro {}", p - 273),
         278 => "Velocity influence".into(),
         279 => "Fill".into(),

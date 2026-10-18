@@ -14,6 +14,11 @@ use sequencer::*;
 use std::cell::RefCell;
 
 pub const MAX_FRAMES: usize = 4096;
+#[no_mangle]
+pub extern "C" fn lxr_pattern_count() -> u32 {
+    PATTERNS as u32
+}
+
 pub struct Engine {
     pub sample_rate: f32,
     pub params: [[f32; PARAMS]; VOICES],
@@ -99,7 +104,10 @@ impl Engine {
                 0., 0.22, 0.25, 0.35, 0.55, 0.25, 0.8, 0., 1., 0., 0.25, 0.5, 0.75, 4., 1.,
             ],
             global_morph: [0., 1.],
-            scenes: Box::new([Scene::default(); PATTERNS]),
+            scenes: vec![Scene::default(); PATTERNS]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap_or_else(|_| unreachable!()),
             samples: std::array::from_fn(|_| Sample::default()),
             macros: [0.; 4],
             global_macros: [0.; 4],

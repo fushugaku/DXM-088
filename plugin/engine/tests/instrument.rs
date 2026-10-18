@@ -5,26 +5,27 @@ fn render(i: &mut Instrument, n: usize) {
     assert!(out.iter().all(|x| x.is_finite()));
 }
 #[test]
-fn only_mapped_held_notes_gate_the_sequence() {
+fn all_128_held_notes_gate_their_own_pattern() {
     let mut i = Instrument::new(48000.);
     i.transport(120., 0., true);
     render(&mut i, 512);
     assert!(!i.engine.playing);
-    i.midi(0x90, 36, 100);
-    assert_eq!(i.active_note, None);
-    for key in 24..32 {
+    assert_eq!(i.base_note, 0);
+    for key in 0..=127 {
         i.midi(0x90, key, 100);
         assert_eq!(i.active_note, Some(key));
-        assert_eq!(i.engine.pattern, (key - 24) as usize);
+        assert_eq!(i.engine.pattern, key as usize);
         render(&mut i, 1);
         assert!(i.engine.playing);
         i.midi(0x80, key, 0);
         assert!(!i.engine.playing);
     }
 }
+
 #[test]
 fn last_note_priority_falls_back_across_channels() {
     let mut i = Instrument::new(44100.);
+    i.set(273, 24.);
     i.midi(0x90, 24, 100);
     i.midi(0x91, 29, 127);
     i.midi(0x90, 27, 80);
@@ -64,6 +65,7 @@ fn new_mapping_clears_held_keys() {
 #[test]
 fn host_grid_swing_tempo_and_seek() {
     let mut i = Instrument::new(48000.);
+    i.set(273, 24.);
     i.set(270, 0.5);
     i.transport(120., 0., true);
     i.midi(0x90, 24, 127);
@@ -99,6 +101,7 @@ fn live_notes_work_with_stopped_host() {
 #[test]
 fn changing_notes_uses_current_grid_immediately() {
     let mut i = Instrument::new(48000.);
+    i.set(273, 24.);
     i.transport(120., 2.25, true);
     i.midi(0x90, 24, 127);
     render(&mut i, 128);
@@ -131,9 +134,12 @@ fn block_size_does_not_change_audio() {
 fn project_roundtrip_keeps_all_patterns_locks_and_mapping() {
     let mut i = Instrument::new(48000.);
     i.engine.set_param(3, 8, 0.789);
-    i.engine.set_step(7, 6, 63, 0.89, 0.45, -17, 4);
-    i.engine.set_lock(7, 6, 63, 1, 12, 1234.);
-    i.engine.set_length(7, 6, 64);
+    i.engine.set_step(127, 6, 63, 0.89, 0.45, -17, 4);
+    i.engine.set_lock(127, 6, 63, 1, 12, 1234.);
+    i.engine.set_length(127, 6, 64);
+    i.engine.track_settings(127, 6, 12, -0.23, 4, 0.8);
+    i.engine.capture_scene(127, true);
+    i.engine.immediate_pattern(127);
     i.set(273, 60.);
     i.set(234, 5.);
     i.set(237, 0.71);
@@ -143,7 +149,7 @@ fn project_roundtrip_keeps_all_patterns_locks_and_mapping() {
     assert_eq!(other.project(), saved);
     assert_eq!(other.active_note, None);
     let mut invalid = saved.clone();
-    invalid["patterns"][7]["tracks"][6][63]["locks"][1][1] = serde_json::json!(99999999);
+    invalid["patterns"][127]["tracks"][6][63]["locks"][1][1] = serde_json::json!(99999999);
     assert!(other.load(&invalid).is_none());
     assert_eq!(other.project(), saved);
     let clone = i.copy_project(44100.);
@@ -163,6 +169,7 @@ fn instances_are_independent() {
 #[test]
 fn project_replacement_keeps_the_current_held_note_and_grid() {
     let mut old = Instrument::new(48000.);
+    old.set(273, 24.);
     old.transport(120., 3., true);
     old.midi(0x90, 27, 100);
     render(&mut old, 128);
@@ -176,4 +183,40 @@ fn project_replacement_keeps_the_current_held_note_and_grid() {
     assert_eq!(new.engine.positions[0], 12);
     new.midi(0x80, 27, 0);
     assert_eq!(new.active_note, None);
+}
+
+#[test]
+fn endpoint_notes_overlap_and_return_to_previous_held_pattern() {
+    let mut i = Instrument::new(44100.);
+    i.midi(0x90, 0, 100);
+    i.midi(0x9f, 127, 120);
+    assert_eq!(i.engine.pattern, 127);
+    i.midi(0x8f, 127, 0);
+    assert_eq!(i.engine.pattern, 0);
+    assert!(i.engine.playing);
+    i.midi(0x90, 0, 0);
+    assert!(!i.engine.playing);
+}
+
+#[test]
+fn legacy_origins_wrap_across_the_entire_midi_range() {
+    let mut i = Instrument::new(44100.);
+    for base in [24, 60, 120] {
+        i.set(273, base as f32);
+        for key in 0..=127u8 {
+            i.midi(0x90, key, 127);
+            assert_eq!(i.engine.pattern, key.wrapping_sub(base) as usize % 128);
+            i.midi(0x80, key, 0);
+        }
+    }
+}
+
+#[test]
+fn full_bank_fits_a_small_host_thread_stack() {
+    std::thread::Builder::new().stack_size(512 * 1024).spawn(|| {
+        let i = Instrument::new(48000.);
+        let copied = i.copy_project(96000.);
+        assert_eq!(copied.engine.patterns.len(), 128);
+        assert_eq!(copied.engine.scenes.len(), 128);
+    }).unwrap().join().unwrap();
 }

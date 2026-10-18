@@ -64,3 +64,5 @@
 @media(max-width:650px){.feature-body input[type=range],.step-fields input[type=range]{height:44px!important}.feature-body .select-trigger{height:44px;min-height:44px}.feature-body .fill-button{height:44px}.step-fields .select-trigger{height:44px}.step-fields .feature-field{min-height:64px}}
 #step-dialog{max-width:100vw;margin:0;left:auto;right:0;border-right:0;border-top:0;border-bottom:0}
 #step-dialog .field-label,#step-dialog .micro-label{font-size:10px}#step-dialog .select-trigger{font-size:11px}#step-dialog .lock-value output{font-size:10px}.feature-body input:disabled{opacity:.35}.feature-body .field-label{font-size:10px}
+
+#pattern-bank .dropdown{min-width:56px;width:56px}#pattern-bank .select-trigger{padding-inline:10px;font-family:var(--mono,monospace);gap:8px}#pattern-bank{flex:none}.pattern-control{gap:8px}.pattern-control button{min-height:36px}

@@ -1,7 +1,6 @@
 use super::*;
 use lxr02::{
     performance::{Route, Scene, ROUTES},
-    sequencer::PATTERNS,
 };
 
 pub fn encode(data: &[f32]) -> String {
@@ -134,7 +133,8 @@ impl Instrument {
                 amount: num(&r["amount"], -1., 1.)?,
             };
         }
-        for p in 0..PATTERNS {
+        let count = j["patterns"].as_array()?.len();
+        for p in 0..count {
             let pattern = &j["patterns"][p];
             for key in ["divisions", "delays", "grooves", "grooveAmounts"] {
                 if pattern[key].as_array()?.len() != 7 {
@@ -164,10 +164,10 @@ impl Instrument {
                 }
             }
         }
-        if j["scenes"].as_array()?.len() != 8 || j["samples"].as_array()?.len() != 7 {
+        if j["scenes"].as_array()?.len() != count || j["samples"].as_array()?.len() != 7 {
             return None;
         }
-        for p in 0..8 {
+        for p in 0..count {
             let x = &j["scenes"][p];
             if x.is_null() {
                 continue;

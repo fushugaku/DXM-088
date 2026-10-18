@@ -63,10 +63,11 @@ for editor in ['DXM-088.resources/web', 'DXM-088.vst3/Contents/Resources/web']:
     for name in ['index.html', 'app.js', 'style.css', 'engine-bytes.js', 'plugin-bridge.js']:
         if not (RELEASE / editor / name).is_file():
             raise RuntimeError(f'Missing offline editor resource: {editor}/{name}')
+version = next(p['version'] for p in metadata['packages'] if p['name'] == 'lxr02-plugin')
 manifest = {p.relative_to(RELEASE).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(RELEASE.rglob('*')) if p.is_file() and p.name != 'MANIFEST.json'}
-(RELEASE / 'MANIFEST.json').write_text(json.dumps({'product': 'DXM-088', 'version': '0.5.0', 'platform': 'windows-x64', 'sha256': manifest}, indent=2) + '\n')
-archive = ROOT / 'build/plugins/DXM-088-0.5.0-Windows-x64'
+(RELEASE / 'MANIFEST.json').write_text(json.dumps({'product': 'DXM-088', 'version': version, 'platform': 'windows-x64', 'sha256': manifest}, indent=2) + '\n')
+archive = ROOT / f'build/plugins/DXM-088-{version}-Windows-x64'
 shutil.make_archive(str(archive), 'zip', root_dir=RELEASE.parent, base_dir=RELEASE.name)
 zip_path = Path(str(archive) + '.zip')
 zip_path.with_suffix('.zip.sha256').write_text(hashlib.sha256(zip_path.read_bytes()).hexdigest() + '  ' + zip_path.name + '\n')

@@ -30,6 +30,10 @@ fn main() {
         i.engine.set_step(p, 5, 14, 0.8, 1., 0, 3);
         i.engine.capture_scene(p, true);
     }
+    for p in 8..lxr02::sequencer::PATTERNS {
+        i.engine.patterns[p] = i.engine.patterns[p % 8];
+        i.engine.scenes[p] = i.engine.scenes[p % 8];
+    }
     i.engine.set_route(0, 0, 1, 8, 0.35);
     i.engine.set_route(1, 0, 5, 12, 0.2);
     i.engine.set_route(2, 5, 0, 15, 0.4);
@@ -43,5 +47,5 @@ fn main() {
     let path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "artifacts/polyrhythm-scenes.lxr02.json".into());
-    std::fs::write(path, serde_json::to_string_pretty(&j).unwrap()).unwrap();
+    std::fs::write(path, serde_json::to_string(&j).unwrap()).unwrap();
 }

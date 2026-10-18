@@ -69,7 +69,7 @@ static void au(const char* path){
     CFPropertyListRef saved=nullptr;size=sizeof(saved);REQUIRE(AudioUnitGetProperty(unit,kAudioUnitProperty_ClassInfo,kAudioUnitScope_Global,0,&saved,&size)==noErr);
     REQUIRE(AudioUnitSetParameter(unit,273,kAudioUnitScope_Global,0,70.,0)==noErr);
     REQUIRE(AudioUnitSetProperty(unit,kAudioUnitProperty_ClassInfo,kAudioUnitScope_Global,0,&saved,sizeof(saved))==noErr);
-    AudioUnitParameterValue restored;REQUIRE(AudioUnitGetParameter(unit,273,kAudioUnitScope_Global,0,&restored)==noErr);REQUIRE(std::abs(restored-24.f)<.00001);
+    AudioUnitParameterValue restored;REQUIRE(AudioUnitGetParameter(unit,273,kAudioUnitScope_Global,0,&restored)==noErr);REQUIRE(std::abs(restored)<.00001);
     CFRelease(saved);lxrp_destroy(reference);AudioUnitUninitialize(unit);AudioComponentInstanceDispose(unit);
     std::printf("PASS AU %.0f Hz: MIDI offsets, overlap/fallback, transport, tempo, seek/loop, stop, variable blocks, latency, state; peak %.6f\n",rate,peak);
   }
@@ -119,7 +119,7 @@ static void clap(const char* path){
     clap_event_param_value_t change{};change.header.size=sizeof(change);change.header.type=CLAP_EVENT_PARAM_VALUE;change.param_id=273;change.value=70.;change.note_id=-1;change.port_index=change.channel=change.key=-1;
     clap_input_events_t changeEvents{};changeEvents.ctx=&change;changeEvents.size=[](const clap_input_events_t*)->uint32_t{return 1;};changeEvents.get=[](const clap_input_events_t*p,uint32_t)->const clap_event_header_t*{return &static_cast<clap_event_param_value_t*>(p->ctx)->header;};params->flush(plugin,&changeEvents,&outEvents);
     struct Reader{std::vector<uint8_t>*bytes;size_t offset=0;}reader{&bytes};clap_istream_t input{};input.ctx=&reader;input.read=[](const clap_istream_t*p,void*b,uint64_t size)->int64_t{auto&r=*static_cast<Reader*>(p->ctx);size=std::min<uint64_t>(size,r.bytes->size()-r.offset);std::memcpy(b,r.bytes->data()+r.offset,size);r.offset+=size;return size;};REQUIRE(state->load(plugin,&input));
-    double restored=0.;REQUIRE(params->get_value(plugin,273,&restored)&&std::abs(restored-24.)<.00001);
+    double restored=0.;REQUIRE(params->get_value(plugin,273,&restored)&&std::abs(restored)<.00001);
     lxrp_destroy(reference);plugin->destroy(plugin);std::printf("PASS CLAP %.0f Hz: MIDI offsets, overlap/fallback, transport, tempo, seek/loop, stop, variable blocks, latency, state; peak %.6f\n",rate,peak);
   }
   entry->deinit();dlclose(library);

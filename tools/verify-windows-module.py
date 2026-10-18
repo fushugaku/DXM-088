@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Load the compiled CLAP on Windows and inspect its real plugin descriptor."""
 import ctypes as C
+import json
 from pathlib import Path
 
 class Version(C.Structure):
@@ -33,7 +34,8 @@ try:
     descriptor = factory.descriptor(address, 0).contents
     assert descriptor.name == b'DXM-088', descriptor.name
     assert descriptor.id == b'local.ErikaRust.LXR02', descriptor.id
-    assert descriptor.version_string == b'0.5.0', descriptor.version_string
-    print('Windows x64 CLAP loaded: DXM-088 0.5.0; legacy session identity preserved.')
+    version = json.loads((path.parent / 'MANIFEST.json').read_text())['version']
+    assert descriptor.version_string == version.encode(), descriptor.version_string
+    print(f'Windows x64 CLAP loaded: DXM-088 {version}; legacy session identity preserved.')
 finally:
     entry.deinit()

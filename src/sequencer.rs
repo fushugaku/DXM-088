@@ -1,5 +1,5 @@
 use crate::params::TRACKS;
-pub const PATTERNS: usize = 8;
+pub const PATTERNS: usize = 128;
 pub const STEPS: usize = 64;
 
 #[derive(Clone, Copy, Debug)]
@@ -68,8 +68,16 @@ pub struct Pattern {
     pub tracks: [Track; TRACKS],
 }
 
+/// Allocate the bank on the heap: the full MIDI bank exceeds common host stacks.
+pub fn blank_patterns() -> Box<[Pattern; PATTERNS]> {
+    vec![Pattern::default(); PATTERNS]
+        .into_boxed_slice()
+        .try_into()
+        .unwrap_or_else(|_| unreachable!())
+}
+
 pub fn demo_patterns() -> Box<[Pattern; PATTERNS]> {
-    let mut patterns = Box::new([Pattern::default(); PATTERNS]);
+    let mut patterns = blank_patterns();
     for (p, pattern) in patterns.iter_mut().enumerate() {
         let hits: [&[usize]; TRACKS] = match p % 4 {
             0 => [
@@ -117,7 +125,7 @@ pub fn demo_patterns() -> Box<[Pattern; PATTERNS]> {
                 } else {
                     0.67 + (s % 3) as f32 * 0.08
                 };
-                if p >= 4 && t > 0 && s % 4 != 0 {
+                if p % 8 >= 4 && t > 0 && s % 4 != 0 {
                     step.probability = 0.72;
                 }
             }

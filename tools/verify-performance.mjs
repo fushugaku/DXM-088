@@ -14,7 +14,7 @@ for(const p of s.patterns)for(const row of p.tracks)for(const step of row)Object
 for(let t=0;t<3;t++){s.patterns[0].lengths[t]=3;for(let k=0;k<3;k++)s.patterns[0].tracks[t][k].v=1;}
 s.patterns[0].divisions[0]=4;s.patterns[0].divisions[1]=3;s.patterns[0].divisions[2]=9;
 const commands=[['lxr_panic',[]],['lxr_tempo',[s.bpm,0]],['lxr_pattern',[0]]];
-for(let p=0;p<8;p++)for(let t=0;t<7;t++){commands.push(['lxr_length',[p,t,s.patterns[p].lengths[t]]]);for(let k=0;k<64;k++){const a=s.patterns[p].tracks[t][k];commands.push(['lxr_set_step',[p,t,k,a.v,a.prob,a.note,a.ratchet]]);}}
+for(let p=0;p<s.patterns.length;p++)for(let t=0;t<7;t++){commands.push(['lxr_length',[p,t,s.patterns[p].lengths[t]]]);for(let k=0;k<64;k++){const a=s.patterns[p].tracks[t][k];commands.push(['lxr_set_step',[p,t,k,a.v,a.prob,a.note,a.ratchet]]);}}
 commands.push(...featureCommands(s));
 const result=await renderPattern(module,commands,s,{beats:1,audio:true});
 assert.deepEqual(result.hits.filter(h=>h.track===0).map(h=>h.frame),[0,5513,11025,16538]);

@@ -23,7 +23,7 @@
     <label class="tempo"><input id="bpm" type="number" min="30" max="300" step="1" value="128" aria-label="Tempo"><span>BPM</span></label>
     <button id="tap" class="small-button tap" title="Tap tempo">TAP</button>
     <div class="toolbar-divider"></div>
-    <div class="pattern-control"><span class="micro-label">PATTERN</span><div id="patterns" class="pattern-buttons" role="group" aria-label="Patterns"></div></div>
+    <div class="pattern-control"><div id="pattern-bank"></div><div id="patterns" class="pattern-buttons" role="group" aria-label="Patterns"></div></div>
     <div class="kit-control"><span class="micro-label">KIT</span><div id="kit-select"></div></div>
     <button id="audio-status" class="audio-status" title="Enable audio"><i></i><span>Audio off</span></button>
   </section>
@@ -48,7 +48,7 @@
     <section id="performance-panel" class="panel performance-panel" aria-label="Performance and sound"><nav id="feature-tabs" class="tabs feature-tabs" role="tablist" aria-label="Performance sections"></nav><div id="feature-body" class="feature-body" role="tabpanel"></div></section>
     <section class="fx-panel panel" aria-label="Master effects"><div class="fx-select"><h2>MASTER FX</h2><div id="fx-type"></div></div><div id="fx-controls" class="fx-controls"></div><div class="morph-control"><div><label for="morph">MORPH</label><button id="morph-target" class="micro-label">→ ALLOY</button><output id="morph-value">0%</output></div><input id="morph" type="range" min="0" max="1" step="0.01" value="0"></div></section>
   </main>
-  <footer class="footnote"><span><span class="status-dot"></span><span id="engine-info">Loading instrument…</span></span><span class="keyboard-hints"><kbd>SPACE</kbd> transport <span class="footer-sep">/</span> <kbd>A S D F G H J</kbd> triggers</span><span class="version">RUST ENGINE <span>0.5 / DSP 1.71</span></span></footer>
+  <footer class="footnote"><span><span class="status-dot"></span><span id="engine-info">Loading instrument…</span></span><span class="keyboard-hints"><kbd>SPACE</kbd> transport <span class="footer-sep">/</span> <kbd>A S D F G H J</kbd> triggers</span><span class="version">RUST ENGINE <span>0.6 / DSP 1.71</span></span></footer>
 </div>
 <dialog id="step-dialog"><div class="dialog-heading"><div><span class="micro-label">STEP EDITOR</span><h2 id="step-title">Drum 1 · 01</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="step-fields" class="step-fields"></div><h3 class="micro-label lock-title">PARAMETER LOCKS</h3><div id="step-locks"></div><div class="dialog-footer"><button id="step-remove" class="text-button">Remove step</button><button class="outline-button close-dialog">Done</button></div></dialog>
 <dialog id="generator-dialog"><div class="dialog-heading"><div><span class="micro-label">EUCLIDEAN GENERATOR</span><h2 id="generator-title">Drum 1</h2></div><button class="icon-button close-dialog" aria-label="Close">×</button></div><div id="generator-preview" class="generator-preview"></div><div class="generator-fields"><label>HITS<input id="gen-hits" type="number" min="0" max="64" value="5"></label><label>LENGTH<input id="gen-length" type="number" min="1" max="64" value="16"></label><label>ROTATION<input id="gen-rotation" type="number" min="0" max="63" value="0"></label></div><div class="dialog-footer"><span class="secondary" id="generator-summary">5 hits in 16 steps</span><button id="apply-generator" class="primary-button">Apply to track</button></div></dialog>

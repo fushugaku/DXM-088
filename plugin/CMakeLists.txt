@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DXM-088 VERSION 0.5.0 LANGUAGES C CXX)
+project(DXM-088 VERSION 0.6.0 LANGUAGES C CXX)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(IPLUG2_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.deps/iplug2" CACHE PATH "iPlug2 SDK")
 set(IPLUG_DEPLOY_PLUGINS OFF CACHE BOOL "Install with tools/install-plugins.sh" FORCE)

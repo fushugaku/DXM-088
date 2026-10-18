@@ -4,6 +4,8 @@ import {createPerformanceUI} from './performance-ui.js';
 import {migrateProject,FX_DEFAULTS} from './project-format.js';
 import {kits,tracks,shortTracks,keys,defs,pages,clamp,bindDefinitions,normalize,denormalize,constrain,format} from './parameters.js';
 import {KnobDrag,wheelPixels,ParameterEdits} from './knob-input.js';
+import {PATTERN_COUNT,BANK_SIZE,BANK_COUNT,patternLabel,patternNote,noteName} from './pattern-bank.js';
+import {captureHistory,restoreHistory} from './project-history.js';
 
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -11,7 +13,7 @@ const storageKey='lxr02-project-v1';
 const native=globalThis.lxrNative;let receivingNative=false,nativeBooted=false;
 let module,core,state,factoryKits,audio=null,audioPending=null,playing=false,selectedTrack=0,page=0,bar=0,positions=Array(7).fill(-1),audioPattern=0,editedStep=null,dirtyTimer,toastTimer;
 let past=[],knobUpdates=[],tapTimes=[],suppressStepClick=false;
-let kitSelect,fxSelect,features,divisionSelect;
+let kitSelect,fxSelect,features,divisionSelect,bankSelect;
 const waveform=new Float32Array(1024);
 const localEdits=new ParameterEdits();
 function markLocalCommand(fn,args){
@@ -30,7 +32,7 @@ function markLocalCommand(fn,args){
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),3200);}
 function report(error){console.error(error);toast(error instanceof Error?error.message:String(error));}
 function saveSoon(){if(native){native.meta(state.name,state.kit,{macroNames:state.performance.macroNames,mutation:state.performance.mutation});return;}clearTimeout(dirtyTimer);dirtyTimer=setTimeout(()=>{storeProject(state).catch(()=>{$('#engine-info').textContent='Browser storage unavailable · download your project';});},250);}
-function remember(){past.push({json:JSON.stringify({...state,samples:state.samples.map(a=>a?{...a,data:undefined}:null)}),samples:state.samples.map(a=>a?.data??null)});if(past.length>32)past.shift();$('#undo').disabled=false;}
+function remember(indices){past.push(captureHistory(state,indices===true||Array.isArray(indices)?indices:[state.pattern]));if(past.length>32)past.shift();$('#undo').disabled=false;}
 function command(fn,...args){
  if(fn==='lxr_param')state.params[args[0]][args[1]]=args[2];
  else if(fn==='lxr_fx')state.fx[args[0]]=args[1];
@@ -38,18 +40,18 @@ function command(fn,...args){
  else if(fn==='lxr_mute')state.muted[args[0]]=!!args[1];
  else if(fn==='lxr_solo')state.solo[args[0]]=!!args[1];
  core[fn](...args);if(audio)audio.node.port.postMessage({command:[fn,args]});if(native&&!receivingNative){markLocalCommand(fn,args);native.commands([[fn,args]]);}}
-function batch(commands){for(const [fn,args] of commands)core[fn](...args);if(audio)audio.node.port.postMessage({batch:commands});if(native&&!receivingNative){if(commands.length>64)native.project({...state,plugin:{version:1,baseNote:Number($('#pattern-note-base')?.value??24)}});else native.commands(commands);}}
+function batch(commands){for(const [fn,args] of commands)core[fn](...args);if(audio)audio.node.port.postMessage({batch:commands});if(native&&!receivingNative){if(commands.length>64)native.project({...state,plugin:{...state.plugin,version:2,baseNote:Number($('#pattern-note-base')?.value??state.plugin?.baseNote??0)}});else native.commands(commands);}}
 
 function readParams(){return Array.from({length:6},(_,v)=>Array.from({length:defs.length},(_,p)=>core.lxr_get_param(v,p)));}
 function readPattern(p){return {lengths:Array.from({length:7},(_,t)=>core.lxr_get_length(p,t)),divisions:Array.from({length:7},(_,t)=>core.lxr_track_get(p,t,0)),delays:Array.from({length:7},(_,t)=>core.lxr_track_get(p,t,1)),grooves:Array.from({length:7},(_,t)=>core.lxr_track_get(p,t,2)),grooveAmounts:Array.from({length:7},(_,t)=>core.lxr_track_get(p,t,3)),tracks:Array.from({length:7},(_,t)=>Array.from({length:64},(_,k)=>({v:core.lxr_get_step(p,t,k,0),prob:core.lxr_get_step(p,t,k,1),note:core.lxr_get_step(p,t,k,2),ratchet:core.lxr_get_step(p,t,k,3),micro:core.lxr_get_step(p,t,k,8),condition:core.lxr_get_step(p,t,k,9),every:core.lxr_get_step(p,t,k,10),phase:core.lxr_get_step(p,t,k,11),locks:[[core.lxr_get_step(p,t,k,4),core.lxr_get_step(p,t,k,5)],[core.lxr_get_step(p,t,k,6),core.lxr_get_step(p,t,k,7)]]})))};}
-function freshState(){return {format:'lxr02-web',version:3,name:'Session 01',kit:0,bpm:128,swing:0,params:readParams(),patterns:Array.from({length:8},(_,p)=>readPattern(p)),pattern:0,levels:Array(7).fill(0.85),muted:Array(7).fill(false),solo:Array(7).fill(false),fx:[...FX_DEFAULTS],morph:0,morphTarget:1,performance:defaultPerformance(),scenes:Array(8).fill(null),samples:Array(7).fill(null)};}
+function freshState(){return {format:'lxr02-web',version:4,name:'Session 01',kit:0,bpm:128,swing:0,params:readParams(),patterns:Array.from({length:PATTERN_COUNT},(_,p)=>readPattern(p)),pattern:0,levels:Array(7).fill(0.85),muted:Array(7).fill(false),solo:Array(7).fill(false),fx:[...FX_DEFAULTS],morph:0,morphTarget:1,performance:defaultPerformance(),scenes:Array(PATTERN_COUNT).fill(null),samples:Array(7).fill(null),plugin:{version:2,baseNote:0}};}
 function syncSamples(){uploadSamples(core,state.samples);if(audio)audio.node.port.postMessage({samples:state.samples});}
-function publishProject(){const wasPlaying=playing;batch(snapshotCommands(state));syncSamples();if(wasPlaying&&!native)command('lxr_play');saveSoon();}
-function selectPattern(p){state.pattern=p;command('lxr_pattern',p);$('#pattern-label').textContent=`A${String(p+1).padStart(2,'0')}`;renderAll();saveSoon();}
-function snapshotCommands(s){
+function publishProject(indices=[state.pattern]){const wasPlaying=playing;batch(snapshotCommands(state,indices));syncSamples();if(wasPlaying&&!native)command('lxr_play');saveSoon();}
+function selectPattern(p){state.pattern=p;command('lxr_pattern',p);$('#pattern-label').textContent=patternLabel(p);renderAll();saveSoon();}
+function snapshotCommands(s,indices=s.patterns.map((_,p)=>p)){
  const list=[['lxr_panic',[]],['lxr_tempo',[s.bpm,s.swing]],['lxr_pattern',[s.pattern]]];
  for(let v=0;v<6;v++)for(let p=0;p<defs.length;p++)list.push(['lxr_param',[v,p,s.params[v][p]]]);
- for(let p=0;p<8;p++)for(let t=0;t<7;t++){
+ for(const p of indices)for(let t=0;t<7;t++){
   list.push(['lxr_length',[p,t,s.patterns[p].lengths[t]]]);
   for(let i=0;i<64;i++){
    const a=s.patterns[p].tracks[t][i];list.push(['lxr_set_step',[p,t,i,a.v,a.prob,a.note,a.ratchet]]);
@@ -58,15 +60,15 @@ function snapshotCommands(s){
  }
  for(let t=0;t<7;t++){list.push(['lxr_level',[t,s.levels[t]]],['lxr_mute',[t,+s.muted[t]]],['lxr_solo',[t,+s.solo[t]]]);}
  for(let p=0;p<s.fx.length;p++)list.push(['lxr_fx',[p,s.fx[p]]]);
- list.push(['lxr_morph',[s.morph,s.morphTarget]],...featureCommands(s));return list;
+ list.push(['lxr_morph',[s.morph,s.morphTarget]],...featureCommands(s,indices));return list;
 }
 function validateProject(input){
  const raw=migrateProject(input);
- const fail=()=>{throw new Error('This file is not a valid LXR / 02 project.');};
+ const fail=()=>{throw new Error('This file is not a valid DXM-088 project.');};
  const number=(v,min,max)=>{if(!Number.isFinite(v)||v<min-0.0001||v>max+0.0001)fail();return clamp(v,min,max);};
- if(raw?.format!=='lxr02-web'||raw.version!==3)fail();
- const s={format:'lxr02-web',version:3,name:typeof raw.name==='string'?raw.name.slice(0,60):'Session 01',kit:number(raw.kit,0,4)|0,bpm:number(raw.bpm,30,300),swing:number(raw.swing,0,0.5),pattern:number(raw.pattern,0,7)|0,morph:number(raw.morph,0,1),morphTarget:number(raw.morphTarget,0,4)|0};
- if(!Array.isArray(raw.params)||raw.params.length!==6||!Array.isArray(raw.patterns)||raw.patterns.length!==8)fail();
+ if(raw?.format!=='lxr02-web'||raw.version!==4)fail();
+ const s={format:'lxr02-web',version:4,name:typeof raw.name==='string'?raw.name.slice(0,60):'Session 01',kit:number(raw.kit,0,4)|0,bpm:number(raw.bpm,30,300),swing:number(raw.swing,0,0.5),pattern:number(raw.pattern,0,PATTERN_COUNT-1)|0,morph:number(raw.morph,0,1),morphTarget:number(raw.morphTarget,0,4)|0};
+ if(!Array.isArray(raw.params)||raw.params.length!==6||!Array.isArray(raw.patterns)||raw.patterns.length!==PATTERN_COUNT)fail();
  s.params=raw.params.map(a=>{if(!Array.isArray(a)||a.length!==defs.length)fail();return a.map((x,i)=>constrain(defs[i],number(x,defs[i].min,defs[i].max)));});
  s.patterns=raw.patterns.map(p=>{
   if(!Array.isArray(p.lengths)||p.lengths.length!==7||!Array.isArray(p.tracks)||p.tracks.length!==7)fail();
@@ -81,7 +83,7 @@ function validateProject(input){
  for(const field of ['levels','muted','solo']){if(!Array.isArray(raw[field])||raw[field].length!==7)fail();s[field]=raw[field].map(x=>field==='levels'?number(x,0,1.25):Boolean(x));}
  if(!Array.isArray(raw.fx)||raw.fx.length!==15)fail();
  const ranges=[[0,7],[0,1],[0,0.743],[0,0.94],[0,1],[0,1],[0,1.5],[0,1],[0,1],[0,5],[0,1],[0,1],[0,1],[1,8],[0,1]];
- s.fx=raw.fx.map((x,i)=>number(x,...ranges[i]));if(raw.plugin)s.plugin={version:1,baseNote:number(raw.plugin.baseNote,0,120)|0};return validateFeatures(raw,s,number,defs);
+ s.fx=raw.fx.map((x,i)=>number(x,...ranges[i]));if(raw.plugin)s.plugin={version:2,baseNote:number(raw.plugin.baseNote,0,120)|0};return validateFeatures(raw,s,number,defs);
 }
 
 let activeDropdown=null,dropdownSerial=0;
@@ -92,7 +94,7 @@ function selectWidget(container,options,value,onChange,label){
  let selected=value;
  const searchable=options.length>16;let search=null;
  const optionNodes=()=>[...menu.querySelectorAll('[role="option"]')].filter(b=>!b.hidden);
- function set(v){selected=v;current.textContent=options.find(o=>o.value===v)?.label??'—';for(const b of menu.querySelectorAll('[role=option]'))b.setAttribute('aria-selected',String(+b.dataset.value===v));}
+ function set(v){selected=v;current.textContent=options.find(o=>o.value===v)?.shortLabel??options.find(o=>o.value===v)?.label??'—';for(const b of menu.querySelectorAll('[role=option]'))b.setAttribute('aria-selected',String(+b.dataset.value===v));}
  function close(){menu.hidden=true;trigger.setAttribute('aria-expanded','false');root.append(menu);if(activeDropdown===control)activeDropdown=null;removeEventListener('resize',place);visualViewport?.removeEventListener('resize',place);document.removeEventListener('scroll',onScroll,true);root.closest('dialog')?.removeEventListener('close',close);}
  function focusOption(option){if(!option)return;option.focus({preventScroll:true});const top=option.offsetTop-(search?search.offsetHeight+4:0),bottom=option.offsetTop+option.offsetHeight;if(top<menu.scrollTop)menu.scrollTop=top;else if(bottom>menu.scrollTop+menu.clientHeight)menu.scrollTop=bottom-menu.clientHeight;}
  function place(){
@@ -230,14 +232,15 @@ function renderGrid(){
 }
 function updatePlayhead(){
  $$('.step').forEach(b=>b.classList.toggle('playhead',playing&&audioPattern===state.pattern&&positions[+b.dataset.track]===+b.dataset.step));
- $$('#patterns button').forEach((b,i)=>{b.classList.toggle('selected',i===state.pattern);b.classList.toggle('queued',playing&&i===state.pattern&&audioPattern!==state.pattern);b.setAttribute('aria-pressed',i===state.pattern);});
+ $$('#patterns button').forEach(b=>{const p=+b.dataset.pattern;b.classList.toggle('selected',p===state.pattern);b.classList.toggle('queued',playing&&p===state.pattern&&audioPattern!==state.pattern);b.setAttribute('aria-pressed',p===state.pattern);});
 }
 function updateTimingControls(){
  const p=state.patterns[state.pattern],t=selectedTrack;divisionSelect?.set(p.divisions[t]);$('#track-hits').max=p.lengths[t];$('#track-hits').value=p.tracks[t].slice(0,p.lengths[t]).filter(a=>a.v>0).length;
 }
 function renderPatterns(){
- const items=Array.from({length:8},(_,p)=>{const b=el('button','',String(p+1).padStart(2,'0'));b.setAttribute('aria-label',`Pattern A${String(p+1).padStart(2,'0')}`);b.onclick=()=>selectPattern(p);return b;});$('#patterns').replaceChildren(...items);
- $('#pattern-label').textContent=`A${String(state.pattern+1).padStart(2,'0')}`;
+ const bank=Math.floor(state.pattern/BANK_SIZE);bankSelect?.set(bank);
+ const items=Array.from({length:BANK_SIZE},(_,slot)=>{const p=bank*BANK_SIZE+slot,b=el('button','',String(slot+1).padStart(2,'0'));b.dataset.pattern=p;b.setAttribute('aria-label',`Pattern ${patternLabel(p)}`);b.title=`${patternLabel(p)} · ${noteName(patternNote(p,state.plugin?.baseNote??0))}`;b.onclick=()=>selectPattern(p);return b;});$('#patterns').replaceChildren(...items);
+ $('#pattern-label').textContent=patternLabel(state.pattern);
  $('#bars').replaceChildren(...Array.from({length:4},(_,i)=>{const b=el('button','',String(i+1));b.classList.toggle('active',i===bar);b.setAttribute('aria-label',`Bar ${i+1}`);b.onclick=()=>{bar=i;renderGrid();$$('#bars button').forEach((n,j)=>n.classList.toggle('active',i===j));};return b;}));
 }
 
@@ -348,9 +351,9 @@ function bindActions(){
  $('#track-length').onblur=updateTimingControls;$('#track-length').onfocus=remember;$('#track-length').oninput=()=>{if(!$('#track-length').value)return;const n=clamp(Math.round(+$('#track-length').value||16),1,64);state.patterns[state.pattern].lengths[selectedTrack]=n;command('lxr_length',state.pattern,selectedTrack,n);renderGrid();features.render();saveSoon();};
  divisionSelect=selectWidget($('#track-division'),divisions.map(([label],value)=>({label,value})),4,value=>{remember();const p=state.patterns[state.pattern];p.divisions[selectedTrack]=value;command('lxr_track_settings',state.pattern,selectedTrack,value,p.delays[selectedTrack],p.grooves[selectedTrack],p.grooveAmounts[selectedTrack]);renderGrid();features.render();saveSoon();},'Selected track timing');
  $('#track-hits').onblur=updateTimingControls;$('#track-hits').onfocus=remember;$('#track-hits').oninput=()=>{if(!$('#track-hits').value)return;const p=state.patterns[state.pattern],n=p.lengths[selectedTrack],k=clamp(Math.round(+$('#track-hits').value||0),0,n),changes=[];for(let i=0;i<n;i++){const a=p.tracks[selectedTrack][i];a.v=(i*k)%n<k?(a.v||.85):0;changes.push(['lxr_set_step',[state.pattern,selectedTrack,i,a.v,a.prob,a.note,a.ratchet]]);}batch(changes);renderGrid();features.render();saveSoon();};
- $('#copy-pattern').onclick=()=>{remember();const to=(state.pattern+1)%8;state.patterns[to]=structuredClone(state.patterns[state.pattern]);state.scenes[to]=structuredClone(state.scenes[state.pattern]);publishProject();toast(`Copied to A${String(to+1).padStart(2,'0')}`);};
+ $('#copy-pattern').onclick=()=>{const to=(state.pattern+1)%PATTERN_COUNT;remember([to]);state.patterns[to]=structuredClone(state.patterns[state.pattern]);state.scenes[to]=structuredClone(state.scenes[state.pattern]);publishProject([to]);toast(`Copied to ${patternLabel(to)}`);};
  $('#clear-track').onclick=()=>{remember();for(let s=0;s<64;s++){const a=state.patterns[state.pattern].tracks[selectedTrack][s];a.v=0;a.locks=[[255,0],[255,0]];syncStep(state.pattern,selectedTrack,s);}renderGrid();toast(`${tracks[selectedTrack]} cleared`);};
- $('#undo').onclick=()=>{if(!past.length)return;const wasPlaying=playing;const previous=past.pop();state=JSON.parse(previous.json);state.samples.forEach((a,t)=>{if(a)a.data=previous.samples[t];});batch(snapshotCommands(state));if(wasPlaying)command('lxr_play');syncSamples();$('#undo').disabled=!past.length;renderAll();saveSoon();};
+ $('#undo').onclick=()=>{if(!past.length)return;const wasPlaying=playing;const previous=past.pop();state=restoreHistory(state,previous);batch(snapshotCommands(state,previous.slots));if(wasPlaying)command('lxr_play');syncSamples();$('#undo').disabled=!past.length;renderAll();saveSoon();};
  $('#generate').onclick=()=>{$('#generator-title').textContent=tracks[selectedTrack];const track=state.patterns[state.pattern];$('#gen-length').value=track.lengths[selectedTrack];$('#gen-hits').value=track.tracks[selectedTrack].slice(0,track.lengths[selectedTrack]).filter(a=>a.v>0).length;$('#gen-rotation').value=0;generatorPreview();$('#generator-dialog').showModal();};
  for(const id of ['#gen-hits','#gen-length','#gen-rotation'])$(id).oninput=generatorPreview;
  $('#apply-generator').onclick=()=>{remember();const {n,k,r}=generatorPreview();command('lxr_generate',state.pattern,selectedTrack,k,n,r);state.patterns[state.pattern]=readPattern(state.pattern);renderGrid();features.render();saveSoon();$('#generator-dialog').close();};
@@ -361,7 +364,7 @@ function bindActions(){
  $('#project').onclick=()=>{$('#session-name').value=state.name;$('#session-dialog').showModal();};$('#session-name').onchange=()=>{state.name=$('#session-name').value.trim()||'Session 01';saveSoon();};
  $('#save-project').onclick=()=>{state.name=$('#session-name').value.trim()||'Session 01';download(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),`${filename()}.dxm088.json`);saveSoon();};
  $('#import-project').onclick=()=>$('#project-file').click();
- $('#project-file').onchange=async()=>{const file=$('#project-file').files[0];if(!file)return;try{if(file.size>32_000_000)throw new Error('Project file is too large.');const incoming=validateProject(JSON.parse(await file.text()));remember();command('lxr_panic');setPlaying(false);state=incoming;batch(snapshotCommands(state));syncSamples();renderAll();saveSoon();$('#session-dialog').close();toast('Project loaded');}catch(error){report(error);}finally{$('#project-file').value='';}};
+ $('#project-file').onchange=async()=>{const file=$('#project-file').files[0];if(!file)return;try{if(file.size>64_000_000)throw new Error('Project file is too large.');const incoming=validateProject(JSON.parse(await file.text()));remember(true);command('lxr_panic');setPlaying(false);state=incoming;batch(snapshotCommands(state));syncSamples();renderAll();saveSoon();$('#session-dialog').close();toast('Project loaded');}catch(error){report(error);}finally{$('#project-file').value='';}};
  $('#export').onclick=()=>features.showExport();
  document.addEventListener('keydown',e=>{
   if(e.defaultPrevented||e.target.closest('input,textarea,[contenteditable=true]')||$('dialog[open]'))return;
@@ -381,12 +384,13 @@ function animate(){
 async function boot(){
  try {
   let wasmBytes;if(globalThis.lxrWasmBase64)wasmBytes=Uint8Array.from(atob(globalThis.lxrWasmBase64),c=>c.charCodeAt(0));else{const response=await fetch('/lxr02.wasm');if(!response.ok)throw new Error('WASM engine is missing. Run ./run.sh to build it.');wasmBytes=await response.arrayBuffer();}
-  module=await WebAssembly.compile(wasmBytes);core=new WebAssembly.Instance(module,{}).exports;core.lxr_init(44100);bindDefinitions(core);factoryKits=kits.map((_,i)=>{core.lxr_load_kit(i);return readParams();});core.lxr_load_kit(0);state=freshState();
-  try{const stored=native?null:await readStoredProject();if(stored){const parsed=JSON.parse(stored);if(parsed.version===1&&!localStorage.getItem('lxr02-project-v1-original'))localStorage.setItem('lxr02-project-v1-original',stored);state=validateProject(parsed);batch(snapshotCommands(state));syncSamples();if(parsed.version===1)saveSoon();}}catch(error){console.warn('Saved session could not be restored:',error);toast('Saved session unavailable · loaded a fresh session');}
+  module=await WebAssembly.compile(wasmBytes);core=new WebAssembly.Instance(module,{}).exports;if(core.lxr_pattern_count?.()!==PATTERN_COUNT)throw new Error('Rebuild the engine to load all 128 patterns.');core.lxr_init(44100);bindDefinitions(core);factoryKits=kits.map((_,i)=>{core.lxr_load_kit(i);return readParams();});core.lxr_load_kit(0);state=freshState();
+  try{const stored=native?null:await readStoredProject();if(stored){const parsed=JSON.parse(stored);if(parsed.version===1&&!localStorage.getItem('lxr02-project-v1-original'))localStorage.setItem('lxr02-project-v1-original',stored);state=validateProject(parsed);batch(snapshotCommands(state));syncSamples();if(parsed.version<4)saveSoon();}}catch(error){console.warn('Saved session could not be restored:',error);toast('Saved session unavailable · loaded a fresh session');}
   $('#tabs').replaceChildren(...pages.map((p,i)=>{const b=el('button','',p.name);b.onclick=()=>{page=i;renderKnobs();};return b;}));
   kitSelect=selectWidget($('#kit-select'),kits.map((label,value)=>({label:`${String(value+1).padStart(2,'0')} · ${label}`,value})),state.kit,index=>{remember();state.kit=index;state.morph=0;command('lxr_load_kit',index);state.params=readParams();updateScene(state,'params',state.params);renderAll();saveSoon();},'Drum kit');
   fxSelect=selectWidget($('#fx-type'),['Off','Tube drive','Ring mod','Compressor','Delay','Ping pong','Fold','Clip'].map((label,value)=>({label,value})),effective(state,'fx')[0],index=>{remember();effective(state,'fx')[0]=index;command('lxr_fx',0,index);renderFx();saveSoon();},'Effect type');
   features=createPerformanceUI({el,selectWidget,sliderField,state:()=>state,track:()=>selectedTrack,module:()=>module,snapshot:snapshotCommands,native,remember,command,save:saveSoon,publish:publishProject,syncSamples,renderAll,renderKnobs,selectPattern,toast,report,filename,download});
+  bankSelect=selectWidget($('#pattern-bank'),Array.from({length:BANK_COUNT},(_,value)=>({value,shortLabel:String.fromCharCode(65+value),label:`${String.fromCharCode(65+value)} · ${patternLabel(value*BANK_SIZE)}–${patternLabel(value*BANK_SIZE+BANK_SIZE-1)}`})),Math.floor(state.pattern/BANK_SIZE),bank=>selectPattern(bank*BANK_SIZE+state.pattern%BANK_SIZE),'Pattern bank');
   bindActions();renderAll();if(native)await bindNative();$('#engine-info').textContent=native?(native.preview?'DAW editor preview':'MIDI gated · host sync'):'Instrument ready · press play';document.body.setAttribute('aria-busy','false');requestAnimationFrame(animate);
  }catch(error){$('#load-error').hidden=false;$('#load-error').textContent=error.message;$('#engine-info').textContent='Engine unavailable';document.body.setAttribute('aria-busy','false');console.error(error);}
 }
@@ -396,11 +400,11 @@ boot();
 async function bindNative(){
  addEventListener('lxr-native-saved',()=>toast('Project saved'));
  document.body.classList.add("native-plugin");
- const applyProject=project=>{if(!project)return;native.supportsFileDrag=!!project.plugin?.nativeFileDrag;receivingNative=true;try{state=validateProject(project);batch(snapshotCommands(state));renderAll();const base=project.plugin?.baseNote??24;syncSamples();$('#pattern-note-base').value=base;updateNoteRange(base);}finally{receivingNative=false;}};
- const label=document.createElement('label');label.className='native-note-control';label.innerHTML='<span>MIDI</span><input id="pattern-note-base" aria-label="Pattern base MIDI note" type="number" min="0" max="120" value="24"><output id="pattern-note-range">24–31</output>';
+ const applyProject=project=>{if(!project)return;native.supportsFileDrag=!!project.plugin?.nativeFileDrag;receivingNative=true;try{state=validateProject(project);batch(snapshotCommands(state));renderAll();const base=state.plugin?.baseNote??0;syncSamples();$('#pattern-note-base').value=base;updateNoteRange(base);}finally{receivingNative=false;}};
+ const label=document.createElement('label');label.className='native-note-control';label.innerHTML='<span>A01</span><input id="pattern-note-base" aria-label="A01 MIDI note" type="number" min="0" max="120" value="0"><output id="pattern-note-range">C−2–G8</output>';
  $('#tap').replaceWith(label);
- const updateNoteRange=base=>{const names=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];const note=n=>names[n%12]+(Math.floor(n/12)-1);$('#pattern-note-range').textContent=`${note(base)}–${note(base+7)}`;label.title=`MIDI ${base}–${base+7} → A01–A08 · last held note`;};
- $('#pattern-note-base').onchange=e=>{const value=Math.round(clamp(+e.target.value||0,0,120));e.target.value=value;updateNoteRange(value);state.plugin={version:1,baseNote:value};native.parameter(273,value);};
+ const updateNoteRange=base=>{$('#pattern-note-range').textContent='C−2–G8';label.title=`All 128 MIDI notes · A01 = ${noteName(base)} (${base}) · last held note`;};
+ $('#pattern-note-base').onchange=e=>{const value=Math.round(clamp(+e.target.value||0,0,120));e.target.value=value;updateNoteRange(value);state.plugin={version:2,baseNote:value};native.parameter(273,value);};
  $('#bpm').readOnly=true;$('#bpm').title='DAW tempo';$('#play').disabled=true;$('#play').title='Hold a MIDI note to play its pattern';$('#export').hidden=false;
  $('#audio-status').classList.add('enabled');$('#audio-status span').textContent=native.preview?'Preview':'DAW audio';$('#audio-status').title='Audio is processed by the native Rust instrument';
  $('.keyboard-hints').textContent='HOLD NOTE → PATTERN';$('#session-dialog .secondary').textContent='The DAW project stores all kits, patterns and locks. Project files also open in the web instrument.';
@@ -417,7 +421,7 @@ async function bindNative(){
   else if(id===278){state.performance.velocityDepth=norm;}
   else if(id===280){state.performance.switchQuant=Math.round(physical?norm:norm*2);}
   else if(id===281||id===282){state.performance.lfoPeriods[id-281]=physical?norm:.0625+norm*(32-.0625);}
-  else if(id===273){value=Math.round(physical?norm:norm*120);state.plugin={version:1,baseNote:value};$('#pattern-note-base').value=value;updateNoteRange(value);}
+  else if(id===273){value=Math.round(physical?norm:norm*120);state.plugin={version:2,baseNote:value};$('#pattern-note-base').value=value;updateNoteRange(value);}
   if(id===234)fxChanged=true;
   if(!refreshPending){refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refreshNativeControls(fxChanged);fxChanged=false;});}
  });
@@ -426,7 +430,7 @@ async function bindNative(){
   if(s.note>=0&&state.pattern!==audioPattern){state.pattern=audioPattern;renderAll();}
   if(s.meters)$$('.vu i').forEach((n,t)=>n.style.height=`${Math.min(100,Math.sqrt(s.meters[t])*100)}%`);if(s.wave)for(let i=0;i<waveform.length;i++)waveform[i]=s.wave[Math.floor(i*s.wave.length/waveform.length)];
   $('#meter-l').style.width=`${Math.min(100,s.left*100)}%`;$('#meter-r').style.width=`${Math.min(100,s.right*100)}%`;
-  $('#engine-info').textContent=s.note>=0?`MIDI ${Math.round(s.note)} · A${String(audioPattern+1).padStart(2,'0')} · ${s.running?'DAW sync':'live'}`:'MIDI gated · host sync';
+  $('#engine-info').textContent=s.note>=0?`MIDI ${noteName(Math.round(s.note))} · ${patternLabel(audioPattern)} · ${s.running?'DAW sync':'live'}`:'MIDI gated · host sync';
  });
- updateNoteRange(24);const project=await native.ready();applyProject(project);nativeBooted=true;
+ updateNoteRange(0);const project=await native.ready();applyProject(project);nativeBooted=true;
 }

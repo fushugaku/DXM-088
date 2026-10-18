@@ -31,7 +31,7 @@ fn midi_transport_and_render_allocate_nothing() {
         i.engine.sample_data(t, 44100., vec![0.2; 1024]);
         i.engine.track_settings(0, t, 9, 0.1, 2, 0.5);
     }
-    for p in 0..8 {
+    for p in 0..128 {
         i.engine.capture_scene(p, true);
     }
     for r in 0..16 {
@@ -40,12 +40,12 @@ fn midi_transport_and_render_allocate_nothing() {
     let mut replacement=i.copy_project(96000.);
     let mut audio = [0.; 2048];
     TRACK.store(true, Ordering::SeqCst);
-    for k in 0..32 {
+    for k in 0..128 {
         i.transport(60. + k as f64 * 9., k as f64 * 0.25, true);
-        i.midi(0x90, 24 + k % 8, 100);
+        i.midi(0x90, k, 100);
         i.set(234, (k % 8) as f32);
         i.render(&mut audio);
-        i.midi(0x80, 24 + k % 8, 0);
+        i.midi(0x80, k, 0);
     }
     i.transport(120., 0., false);
     i.midi(0xb0, 120, 0);

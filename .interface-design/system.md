@@ -50,3 +50,10 @@ controls on desktop, 44px in mobile feature panels. Do not repeat explanatory co
 The step editor is a right-hand drawer, full width on a phone, with grouped search
 for lock parameters. Only the parameter list scrolls while open. Keep project audio
 assets outside undo JSON copies so turning a knob never duplicates WAV data.
+
+Pattern bank (0.6): 128 independent slots in sixteen banks A–P, eight buttons
+per bank. Replace the PATTERN caption with a compact 56px bank selector, matching
+the button row height. Selecting a bank retains the slot; incoming MIDI follows
+the active bank. Scene buttons show the same eight slots as the top row. MIDI
+names use C−2 = 0 through G8 = 127. Keep sample PCM and unedited bank slots out
+of routine undo snapshots.

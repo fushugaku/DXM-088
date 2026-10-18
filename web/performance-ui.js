@@ -1,3 +1,4 @@
+import {BANK_SIZE,patternLabel,patternNote} from './pattern-bank.js';
 import {divisions,conditionNames,sourceNames,grooveNames,effective,captureScene,pcmToBase64,pcmFromBase64,base64FromBytes} from './feature-state.js';
 import {readWav,renderPattern,wavBytes,midiBytes,zipBytes} from './export-engine.js';
 import {defs,tracks,normalize,denormalize,format} from './parameters.js';
@@ -28,7 +29,7 @@ export function createPerformanceUI(h){
  }
  function scenes(body){
   const s=state(),list=el('div','scene-slots');
-  for(let p=0;p<8;p++){const scene=s.scenes[p],b=el('button',`scene-slot${p===s.pattern?' selected':''}`);b.append(el('b','',`A${String(p+1).padStart(2,'0')}`),el('span','micro-label',scene?.enabled?'SCENE':'SHARED'));b.setAttribute('aria-label',`Scene A${String(p+1).padStart(2,'0')}`);b.onclick=()=>h.selectPattern(p);list.append(b);}
+  for(let slot=0;slot<BANK_SIZE;slot++){const p=Math.floor(s.pattern/BANK_SIZE)*BANK_SIZE+slot;const scene=s.scenes[p],b=el('button',`scene-slot${p===s.pattern?' selected':''}`);b.append(el('b','',patternLabel(p)),el('span','micro-label',scene?.enabled?'SCENE':'SHARED'));b.setAttribute('aria-label',`Scene ${patternLabel(p)}`);b.onclick=()=>h.selectPattern(p);list.append(b);}
   const actions=el('div','feature-actions');actions.append(...buttons([['Capture sound + mix','primary-button'],['Use shared sound']],i=>edit(()=>{s.scenes[s.pattern]=i===0?captureScene(s):null;h.publish();h.renderAll();h.toast(i===0?'Scene captured':'Shared sound selected');})));
   body.append(list,actions);
  }
@@ -64,15 +65,15 @@ export function createPerformanceUI(h){
  }
  let exportBars=4,exportMode=0;
  async function prepareExport(kind){
-  if(busy)return;busy=true;ready=null;render();const s=structuredClone(state()),beats=exportBars*4,base=`${h.filename()}-a${String(s.pattern+1).padStart(2,'0')}`,renderedBars=exportBars,progress=$('#export-progress');
+  if(busy)return;busy=true;ready=null;render();const s=structuredClone(state()),beats=exportBars*4,base=`${h.filename()}-${patternLabel(s.pattern).toLowerCase()}`,renderedBars=exportBars,progress=$('#export-progress');
   try{
    if(!(kind==='midi'&&exportMode===1)&&beats*60/s.bpm>120)throw new Error('Choose fewer bars: maximum render length is 120 seconds.');
-   const commands=h.snapshot(s),progressText=x=>{if(progress)progress.textContent=`Rendering ${Math.round(x*100)}%`;};let files;
+   const commands=h.snapshot(s,[s.pattern]),progressText=x=>{if(progress)progress.textContent=`Rendering ${Math.round(x*100)}%`;};let files;
    if(kind==='stems'){
     files=[];for(let t=0;t<7;t++){const result=await renderPattern(h.module(),commands,s,{beats,track:t,onProgress:x=>progressText((t+x)/7)});files.push({name:`${base}-${t+1}-${tracks[t].toLowerCase().replace(/[^a-z0-9]+/g,'-')}.wav`,mime:'audio/wav',bytes:wavBytes(result.pcm,result.sr)});}
-   }else if(kind==='midi'&&exportMode===1){files=[{name:`${base}-gate.mid`,mime:'audio/midi',bytes:midiBytes([],s.bpm,beats,{gateNote:(s.plugin?.baseNote??24)+s.pattern})}];}
+   }else if(kind==='midi'&&exportMode===1){files=[{name:`${base}-gate.mid`,mime:'audio/midi',bytes:midiBytes([],s.bpm,beats,{gateNote:patternNote(s.pattern,s.plugin?.baseNote??0)})}];}
    else {const result=await renderPattern(h.module(),commands,s,{beats,audio:kind==='wav',onProgress:progressText});files=[{name:`${base}.${kind==='wav'?'wav':'mid'}`,mime:kind==='wav'?'audio/wav':'audio/midi',bytes:kind==='wav'?wavBytes(result.pcm,result.sr):midiBytes(result.hits,s.bpm,beats,{names:tracks})}];}
-   ready={files,kind,label:`A${String(s.pattern+1).padStart(2,'0')} · ${renderedBars} ${renderedBars===1?'bar':'bars'}`,token:null};
+   ready={files,kind,label:`${patternLabel(s.pattern)} · ${renderedBars} ${renderedBars===1?'bar':'bars'}`,token:null};
    if(h.native&&!h.native.preview&&h.native.supportsFileDrag)h.native.prepareFiles(files.map(f=>({name:f.name,data:base64FromBytes(f.bytes)})));
   }catch(e){h.report(e);}finally{busy=false;render();}
  }

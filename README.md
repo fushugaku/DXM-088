@@ -15,25 +15,30 @@ a shared browser / plug-in editor.
 
 - Six synth voices and seven tracks, with closed/open hi-hat choke.
 - FM, waveform oscillators, filters, transient generators, drive and master FX.
-- Eight patterns; each track has its own step division, 1–64 step length and hit count.
+- 128 patterns in sixteen banks A–P; each track has its own step division, 1–64 step length and hit count.
 - Straight, triplet and dotted divisions; microtiming, groove, swing and ratchets.
 - Per-step probability, eight trigger conditions, Fill and two parameter locks.
-- Eight sound/mix scenes, four macros, a 16-route modulation matrix and two tempo LFOs.
+- A sound/mix scene for every pattern, four macros, a 16-route modulation matrix and two tempo LFOs.
 - MIDI velocity, aftertouch and mod wheel; optional WAV layers on every track.
 - Euclidean generation, protected sound mutation, undo and project autosave.
 - WAV, MIDI and seven-stem ZIP export. macOS also supports native export drag into a DAW.
 - 283 host automation parameters and a local WebView editor with no server dependency.
 
-Hold MIDI note **24** to play **A01**. Notes **25–31** select **A02–A08**.
+Every MIDI note **0–127 (C−2–G8)** selects its own pattern and plays while held.
+New projects map **0 → A01**, **7 → A08**, **8 → B01**, **127 → P08**.
 The last held note wins; releasing it returns to the previous held note.
-Releasing all mapped notes stops the sequencer. Pattern changes can be immediate,
-on the next 1/16, or on the next 4/4 bar. The range can be changed in the editor.
-The sequencer follows the host tempo, PPQ, seeking and loops.
+Releasing all notes stops the sequencer. Pattern changes can be immediate,
+on the next 1/16, or on the next 4/4 bar. The sequencer follows the host tempo,
+PPQ, seeking and loops. Octave names vary by DAW; MIDI numbers are unambiguous.
+The bank selector shows eight slots at a time and follows incoming MIDI notes.
+The **A01** field rotates the mapping while keeping all 128 notes available.
 
 DXM-088 is the new name of the earlier local LXR02 Rust instrument. Existing
 format IDs, parameter IDs and project data remain compatible. Avoid installing
 both names of the same plug-in format together: they identify the same instrument.
-Projects use JSON v3 and can import earlier v1/v2 files, including `.lxr02.json`.
+Projects use JSON v4 and can import earlier v1/v2/v3 files, including `.lxr02.json`.
+Older projects keep their original MIDI origin (usually 24), eight patterns and
+scenes; the added slots receive independent copies of those eight templates.
 The demo is [Polyrhythm Scenes](examples/Polyrhythm%20Scenes.dxm088.json).
 
 ## Install
@@ -90,6 +95,7 @@ Pushing a `v*` tag publishes the Windows ZIP and SHA-256 file to a GitHub releas
 cargo test --locked
 cargo test --locked --manifest-path plugin/engine/Cargo.toml
 node tools/verify-project-format.mjs
+node tools/verify-pattern-bank.mjs
 # After building WASM:
 node tools/verify-performance.mjs
 ```
